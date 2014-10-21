@@ -330,7 +330,6 @@ func InitSecContext(claimantCredHandle CredHandle, inputContextHandle ContextHan
 func AcceptSecContext(acceptorCredHandle CredHandle, inputContextHandle ContextHandle, chanBindings *ChannelBindings, inputToken []byte) (majorStatus, minorStatus uint32, srcName InternalName, mechType Oid, outputContextHandle ContextHandle, recFlags Flags, transState, protReadyState bool, lifetimeRec uint32, delegatedCredHandle CredHandle, outputToken []byte) {
 	handle := C.gss_cred_id_t(acceptorCredHandle)
 	ctx := C.gss_ctx_id_t(inputContextHandle)
-	desired := oidToCOid(mechType)
 	bindings := bindingsToCBindings(chanBindings)
 	var major, minor, flags, lifetime C.OM_uint32
 	var name C.gss_name_t
@@ -586,7 +585,7 @@ func DisplayStatus(statusValue uint32, statusType int, mechType Oid) (majorStatu
 	var major, minor, mctx C.OM_uint32
 	var status C.gss_buffer_desc
 
-	major = gss_display_status(&minor, status, stype, mech, &mctx, &status)
+	major = C.gss_display_status(&minor, value, stype, &mech, &mctx, &status)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
@@ -618,7 +617,7 @@ func CompareName(name1, name2 InternalName) (majorStatus, minorStatus uint32, na
 	var major, minor C.OM_uint32
 	var equal C.int
 
-	major = gss_compare_name(&minor, n1, n2, &equal)
+	major = C.gss_compare_name(&minor, n1, n2, &equal)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
@@ -632,7 +631,7 @@ func DisplayName(name InternalName) (majorStatus, minorStatus uint32, nameString
 	var dname C.gss_buffer_desc
 	var ntype C.gss_OID
 
-	major = gss_display_name(&minor, n, &dname, &ntype)
+	major = C.gss_display_name(&minor, n, &dname, &ntype)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
@@ -716,7 +715,7 @@ func CanonicalizeName(inputName InternalName, mechType Oid) (majorStatus, minorS
 	var major, minor C.OM_uint32
 	var newname C.gss_name_t
 
-	major = gss_canonicalize_name(&minor, name, mech, &newname)
+	major = C.gss_canonicalize_name(&minor, name, &mech, &newname)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
@@ -724,16 +723,18 @@ func CanonicalizeName(inputName InternalName, mechType Oid) (majorStatus, minorS
 	return
 }
 
-func ExportName(inputName InternalName) (majorStatus, minorStatus uint32, outputName InternalName) {
+func ExportName(inputName InternalName) (majorStatus, minorStatus uint32, outputName string) {
 	name := C.gss_name_t(inputName)
 	var major, minor C.OM_uint32
-	var newname C.gss_name_t
+	var newname C.gss_buffer_desc
 
-	major = gss_export_name(&minor, name, &newname)
+	major = C.gss_export_name(&minor, name, &newname)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	outputName = InternalName(newname)
+	if newname.length > 0 {
+		outputName = C.GoStringN((*C.char)(newname.value), C.int(newname.length))
+	}
 	return
 }
 
@@ -742,7 +743,7 @@ func DuplicateName(inputName InternalName) (majorStatus, minorStatus uint32, des
 	var major, minor C.OM_uint32
 	var newname C.gss_name_t
 
-	major = gss_duplicate_name(&minor, name, &newname)
+	major = C.gss_duplicate_name(&minor, name, &newname)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
