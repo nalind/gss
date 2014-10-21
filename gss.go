@@ -64,7 +64,6 @@ func coidToOid(coid C.gss_OID_desc) (oid Oid) {
 
 func oidsToCOidSet(oidSet []Oid) (coids C.gss_OID_set) {
 	var major, minor C.OM_uint32
-	coids = nil
 	if (oidSet == nil) {
 		return
 	}
@@ -73,8 +72,8 @@ func oidsToCOidSet(oidSet []Oid) (coids C.gss_OID_set) {
 		return
 	}
 
-	for o := 0; o < len(oidSet); o++ {
-		oid := oidToCOid(oidSet[o])
+	for _, o := range oidSet {
+		oid := oidToCOid(o)
 		major = C.gss_add_oid_set_member(&minor, &oid, &coids)
 		if major != 0 {
 			major = C.gss_release_oid_set(&minor, &coids)
@@ -104,18 +103,19 @@ func coidSetToOids(coids C.gss_OID_set_desc) (oidSet []Oid) {
 }
 
 func AquireCred(desiredName InternalName, lifetimeReq uint32, desiredMechs []Oid, credUsage uint32) (majorStatus, minorStatus uint32, outputCredHandle CredHandle, actualMechs []Oid, lifetimeRec uint32) {
-	var major, minor C.OM_uint32
-	desired := C.gss_OID_set(nil)
+	name := C.gss_name_t(desiredName)
 	lifetime := C.OM_uint32(lifetimeReq)
 	usage := C.gss_cred_usage_t(credUsage)
-	name := C.gss_name_t(desiredName)
-	actual := C.gss_OID_set(nil)
+	var major, minor C.OM_uint32
+	var desired, actual C.gss_OID_set
 	var handle C.gss_cred_id_t
 
 	if desiredMechs != nil {
 		desired = oidsToCOidSet(desiredMechs)
 	}
+
 	major = C.gss_acquire_cred(&minor, name, lifetime, desired, usage, &handle, &actual, &lifetime)
+
 	if desired != nil {
 		major = C.gss_release_oid_set(&minor, &desired)
 	}
@@ -124,6 +124,7 @@ func AquireCred(desiredName InternalName, lifetimeReq uint32, desiredMechs []Oid
 	outputCredHandle = CredHandle(handle)
 	if actual != nil {
 		actualMechs = coidSetToOids(*actual)
+		major = C.gss_release_oid_set(&minor, &actual)
 	} else {
 		actualMechs = nil
 	}
@@ -132,24 +133,25 @@ func AquireCred(desiredName InternalName, lifetimeReq uint32, desiredMechs []Oid
 }
 
 func ReleaseCred(credHandle CredHandle) (majorStatus, minorStatus uint32) {
-	var major, minor C.OM_uint32
 	handle := C.gss_cred_id_t(credHandle)
+	var major, minor C.OM_uint32
 
 	major = C.gss_release_cred(&minor, &handle)
 
-	minorStatus = uint32(minor)
 	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
 	return
 }
 
 func InquireCred(credHandle CredHandle) (majorStatus, minorStatus uint32, credName InternalName, lifetimeRec, credUsage uint32, mechSet []Oid) {
-	var major, minor, lifetime C.OM_uint32
 	handle := C.gss_cred_id_t(credHandle)
 	name := C.gss_name_t(nil)
+	var major, minor, lifetime C.OM_uint32
 	var usage C.gss_cred_usage_t
-	mechs := C.gss_OID_set(nil)
+	var mechs C.gss_OID_set
 
 	major = C.gss_inquire_cred(&minor, handle, &name, &lifetime, &usage, &mechs)
+
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
 	credName = InternalName(name)
@@ -162,11 +164,45 @@ func InquireCred(credHandle CredHandle) (majorStatus, minorStatus uint32, credNa
 	return
 }
 
-func AddCred(credHandle CredHandle, desiredName string, initiatorTimeReq, acceptorTimeReq uint32, desiredMech Oid, credUsage, outputCredHandle CredHandle) (majorStatus, minorStatus uint32, outputCredHandleRec CredHandle, actualMechs []Oid, initiatorTimeRec, acceptorTimeRec, credUsageRec uint32, mechSet []Oid) {
+func AddCred(credHandle CredHandle, desiredName InternalName, desiredMech Oid, initiatorTimeReq, acceptorTimeReq, credUsage uint32, outputCredHandle CredHandle) (majorStatus, minorStatus uint32, outputCredHandleRec CredHandle, actualMechs []Oid, initiatorTimeRec, acceptorTimeRec uint32) {
+	handle := C.gss_cred_id_t(credHandle)
+	name := C.gss_name_t(desiredName)
+	mech := oidToCOid(desiredMech)
+	itime := C.OM_uint32(initiatorTimeReq)
+	atime := C.OM_uint32(acceptorTimeReq)
+	usage := C.gss_cred_usage_t(credUsage)
+	var major, minor C.OM_uint32
+	var mechs C.gss_OID_set
+
+	major = C.gss_add_cred(&minor, handle, name, &mech, usage, itime, atime, &handle, &mechs, &itime, &atime)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	outputCredHandleRec = CredHandle(handle)
+	if mechs != nil {
+		actualMechs = coidSetToOids(*mechs)
+		major = C.gss_release_oid_set(&minor, &mechs)
+	}
+	initiatorTimeRec = uint32(itime)
+	acceptorTimeRec = uint32(atime)
 	return
 }
 
-func InquireCredByMech(credHandle CredHandle, mechType Oid) (majorStatus, minorStatus uint32, credName InternalName, lifetimeRec, credUsage uint32) {
+func InquireCredByMech(credHandle CredHandle, mechType Oid) (majorStatus, minorStatus uint32, credName InternalName, initiatorLifetimeRec, acceptorLifetimeRec, credUsage uint32) {
+	handle := C.gss_cred_id_t(credHandle)
+	mech := oidToCOid(mechType)
+	var major, minor, ilife, alife C.OM_uint32
+	var name C.gss_name_t
+	var usage C.gss_cred_usage_t
+
+	major = C.gss_inquire_cred_by_mech(&minor, handle, &mech, &name, &ilife, &alife, &usage)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	credName = InternalName(name)
+	initiatorLifetimeRec = uint32(ilife)
+	acceptorLifetimeRec = uint32(alife)
+	credUsage = uint32(usage)
 	return
 }
 
@@ -179,91 +215,364 @@ func AcceptSecContext(acceptorCredHandle CredHandle, inputContextHandle ContextH
 }
 
 func DeleteSecContext(contextHandle ContextHandle) (majorStatus, minorStatus uint32, outputContextToken []byte) {
+	handle := C.gss_ctx_id_t(contextHandle)
+	var major, minor C.OM_uint32
+	var token C.gss_buffer_desc
+
+	major = C.gss_delete_sec_context(&minor, &handle, &token)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	if token.value != nil {
+		outputContextToken = bufferToBytes(token)
+		major = C.gss_release_buffer(&minor, &token)
+	}
 	return
 }
 
 func ProcessContextToken(contextHandle ContextHandle, contextToken []byte) (majorStatus, minorStatus uint32) {
+	handle := C.gss_ctx_id_t(contextHandle)
+	var major, minor C.OM_uint32
+	var token C.gss_buffer_desc
+
+	if contextToken != nil {
+		token = bytesToBuffer(contextToken)
+	}
+
+	major = C.gss_process_context_token(&minor, handle, &token)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
 	return
 }
 
 func ContextTime(contextHandle ContextHandle) (majorStatus, minorStatus, lifetimeRec uint32) {
+	handle := C.gss_ctx_id_t(contextHandle)
+	var major, minor, lifetime C.OM_uint32
+
+	major = C.gss_context_time(&minor, handle, &lifetime)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	lifetimeRec = uint32(lifetime)
 	return
 }
 
 func InquireContext(contextHandle ContextHandle) (majorStatus, minorStatus uint32, srcName, targName InternalName, lifetimeRec uint32, mechType Oid, delegState, mutualState, replayDetState, sequenceState, anonState, transState, protReadyState, confAvail, integAvail, locallyInitiated, open bool) {
+	handle := C.gss_ctx_id_t(contextHandle)
+	var major, minor, lifetime, flags C.OM_uint32
+	var sname, tname C.gss_name_t
+	var mech C.gss_OID
+	var localinit, opened C.int
+
+	major = C.gss_inquire_context(&minor, handle, &sname, &tname, &lifetime, &mech, &flags, &localinit, &opened)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	srcName = InternalName(sname)
+	targName = InternalName(tname)
+	lifetimeRec = uint32(lifetime)
+	if mech != nil {
+		mechType = coidToOid(*mech)
+		major = C.gss_release_oid(&minor, &mech)
+	}
+	locallyInitiated = (localinit != 0)
+	open = (opened != 0)
 	return
 }
 
-func WrapSizeLimit(contextHandle ContextHandle, confReqFlag bool, qop uint32, outputSize uint32) (majorStatus, minorStatus, maxInputSize uint32) {
+func WrapSizeLimit(contextHandle ContextHandle, confReqFlag bool, qopReq uint32, outputSize uint32) (majorStatus, minorStatus, maxInputSize uint32) {
+	handle := C.gss_ctx_id_t(contextHandle)
+	qop := C.gss_qop_t(qopReq)
+	output := C.OM_uint32(outputSize)
+	var conf C.int
+	var major, minor, input C.OM_uint32
+
+	if confReqFlag {
+		conf = 1
+	} else {
+		conf = 0
+	}
+
+	major = C.gss_wrap_size_limit(&minor, handle, conf, qop, output, &input)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	maxInputSize = uint32(input)
 	return
 }
 
 func ExportSecContext(contextHandle ContextHandle) (majorStatus, minorStatus uint32, interProcessToken []byte) {
+	handle := C.gss_ctx_id_t(contextHandle)
+	var token C.gss_buffer_desc
+	var major, minor C.OM_uint32
+
+	major = C.gss_export_sec_context(&minor, &handle, &token)
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	if token.length > 0 {
+		interProcessToken = bufferToBytes(token)
+		major = C.gss_release_buffer(&minor, &token)
+	}
 	return
 }
 
 func ImportSecContext(interprocessToken []byte) (majorStatus, minorStatus uint32, contextHandle ContextHandle) {
+	token := bytesToBuffer(interprocessToken)
+	var major, minor C.OM_uint32
+	var handle C.gss_ctx_id_t
+
+	major = C.gss_import_sec_context(&minor, &token, &handle)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	contextHandle = ContextHandle(handle)
 	return
 }
 
 func GetMIC(contextHandle ContextHandle, qopReq uint32, message []byte) (majorStatus, minorStatus uint32, perMessageToken []byte) {
+	handle := C.gss_ctx_id_t(contextHandle)
+	qop := C.gss_qop_t(qopReq)
+	var msg, mic C.gss_buffer_desc
+	var major, minor C.OM_uint32
+
+	msg = bytesToBuffer(message)
+
+	major = C.gss_get_mic(&minor, handle, qop, &msg, &mic)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	if mic.length > 0 {
+		perMessageToken = bufferToBytes(mic)
+		major = C.gss_release_buffer(&minor, &mic)
+	}
 	return
 }
 
-func VerifyMIC(contextHandle ContextHandle, message, perMessageToken []byte) (qopState, majorStatus, minorStatus uint32) {
+func VerifyMIC(contextHandle ContextHandle, message, perMessageToken []byte) (majorStatus, minorStatus, qopState uint32) {
+	handle := C.gss_ctx_id_t(contextHandle)
+	msg := bytesToBuffer(message)
+	mic := bytesToBuffer(perMessageToken)
+	var major, minor C.OM_uint32
+	var qop C.gss_qop_t
+
+	major = C.gss_verify_mic(&minor, handle, &msg, &mic, &qop)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	qopState = uint32(qop)
 	return
 }
 
 func Wrap(contextHandle ContextHandle, confReq bool, qopReq uint32, inputMessage []byte) (majorStatus, minorStatus uint32, confState bool, outputMessage []byte) {
+	handle := C.gss_ctx_id_t(contextHandle)
+	qop := C.gss_qop_t(qopReq)
+	var major, minor C.OM_uint32
+	var msg, wrapped C.gss_buffer_desc
+	var conf C.int
+
+	msg = bytesToBuffer(inputMessage)
+
+	major = C.gss_wrap(&minor, handle, conf, qop, &msg, &conf, &wrapped)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	confState = (conf != 0)
+	if wrapped.length > 0 {
+		outputMessage = bufferToBytes(wrapped)
+		major = C.gss_release_buffer(&minor, &wrapped)
+	}
 	return
 }
 
 func Unwrap(contextHandle ContextHandle, inputMessage []byte) (majorStatus, minorStatus uint32, confState bool, qopState uint32, outputMessage []byte) {
+	handle := C.gss_ctx_id_t(contextHandle)
+	wrapped := bytesToBuffer(inputMessage)
+	var major, minor C.OM_uint32
+	var msg C.gss_buffer_desc
+	var conf C.int
+	var qop C.gss_qop_t
+
+	major = C.gss_unwrap(&minor, handle, &wrapped, &msg, &conf, &qop)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	confState = (conf != 0)
+	qopState = uint32(qop)
+	if msg.length > 0 {
+		outputMessage = bufferToBytes(msg)
+		major = C.gss_release_buffer(&minor, &msg)
+	}
 	return
 }
 
-func DisplayStatus(statusValue, statusType uint32, mechType Oid) (majorStatus, minorStatus uint32, statusString []string) {
+func DisplayStatus(statusValue uint32, statusType int, mechType Oid) (majorStatus, minorStatus, messageContext uint32, statusString string) {
+	value := C.OM_uint32(statusValue)
+	stype := C.int(statusType)
+	mech := oidToCOid(mechType)
+	var major, minor, mctx C.OM_uint32
+	var status C.gss_buffer_desc
+
+	major = gss_display_status(&minor, status, stype, mech, &mctx, &status)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	messageContext = uint32(mctx)
+	if status.length > 0 {
+		statusString = C.GoStringN((*C.char)(status.value), C.int(status.length))
+		major = C.gss_release_buffer(&minor, &status)
+	}
 	return
 }
 
 func IndicateMechs() (majorStatus, minorStatus uint32, mechSet []Oid) {
+	var major, minor C.OM_uint32
+	var mechs C.gss_OID_set
+
+	major = C.gss_indicate_mechs(&minor, &mechs)
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	if mechs != nil {
+		mechSet = coidSetToOids(*mechs)
+		major = C.gss_release_oid_set(&minor, &mechs)
+	}
 	return
 }
 
 func CompareName(name1, name2 InternalName) (majorStatus, minorStatus uint32, nameEqual bool) {
+	n1 := C.gss_name_t(name1)
+	n2 := C.gss_name_t(name2)
+	var major, minor C.OM_uint32
+	var equal C.int
+
+	major = gss_compare_name(&minor, n1, n2, &equal)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	nameEqual = (equal != 0)
 	return
 }
 
 func DisplayName(name InternalName) (majorStatus, minorStatus uint32, nameString string, nameType Oid) {
+	n := C.gss_name_t(name)
+	var major, minor C.OM_uint32
+	var dname C.gss_buffer_desc
+	var ntype C.gss_OID
+
+	major = gss_display_name(&minor, n, &dname, &ntype)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	if dname.length > 0 {
+		nameString = C.GoStringN((*C.char)(dname.value), C.int(dname.length))
+		major = C.gss_release_buffer(&minor, &dname)
+	}
+	if ntype != nil {
+		nameType = coidToOid(*ntype)
+		major = C.gss_release_oid(&minor, &ntype)
+	}
 	return
 }
 
 func ImportName(inputName string, nameType Oid) (majorStatus, minorStatus uint32, outputName InternalName) {
+	ntype := oidToCOid(nameType)
+	var major, minor C.OM_uint32
+	var name C.gss_buffer_desc
+	var iname C.gss_name_t
+
+	name.length = C.size_t(len(inputName))
+	name.value = unsafe.Pointer(C.CString(inputName))
+
+	major = C.gss_import_name(&minor, &name, &ntype, &iname)
+
+	C.free(name.value)
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	outputName = InternalName(iname)
 	return
 }
 
 func ReleaseName(inputName InternalName) (majorStatus, minorStatus uint32) {
+	name := C.gss_name_t(inputName)
+	var major, minor C.OM_uint32
+
+	major = C.gss_release_name(&minor, &name)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
 	return
 }
 
 /* ReleaseBuffer ReleaseOidSet CreateEmptyOidSet AddOidSetMember TestOidSetMember */
 
 func InquireNamesForMech(inputMechType Oid) (majorStatus, minorStatus uint32, nameTypeSet []Oid) {
+	mech := oidToCOid(inputMechType)
+	var major, minor C.OM_uint32
+	var ntypes C.gss_OID_set
+
+	major = C.gss_inquire_names_for_mech(&minor, &mech, &ntypes)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	if ntypes != nil {
+		nameTypeSet = coidSetToOids(*ntypes)
+		major = C.gss_release_oid_set(&minor, &ntypes)
+	}
 	return
 }
 
 func InquireMechsForName(inputName InternalName) (majorStatus, minorStatus uint32, mechTypes []Oid) {
+	name := C.gss_name_t(inputName)
+	var major, minor C.OM_uint32
+	var mechs C.gss_OID_set
+
+	major = C.gss_inquire_mechs_for_name(&minor, name, &mechs)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	if mechs != nil {
+		mechTypes = coidSetToOids(*mechs)
+		major = C.gss_release_oid_set(&minor, &mechs)
+	}
 	return
 }
 
 func CanonicalizeName(inputName InternalName, mechType Oid) (majorStatus, minorStatus uint32, outputName InternalName) {
+	name := C.gss_name_t(inputName)
+	mech := oidToCOid(mechType)
+	var major, minor C.OM_uint32
+	var newname C.gss_name_t
+
+	major = gss_canonicalize_name(&minor, name, mech, &newname)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	outputName = InternalName(newname)
 	return
 }
 
 func ExportName(inputName InternalName) (majorStatus, minorStatus uint32, outputName InternalName) {
+	name := C.gss_name_t(inputName)
+	var major, minor C.OM_uint32
+	var newname C.gss_name_t
+
+	major = gss_export_name(&minor, name, &newname)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	outputName = InternalName(newname)
 	return
 }
 
 func DuplicateName(inputName InternalName) (majorStatus, minorStatus uint32, destName InternalName) {
+	name := C.gss_name_t(inputName)
+	var major, minor C.OM_uint32
+	var newname C.gss_name_t
+
+	major = gss_duplicate_name(&minor, name, &newname)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	destName = InternalName(newname)
 	return
 }
