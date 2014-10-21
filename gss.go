@@ -23,8 +23,17 @@ type Oid asn1.ObjectIdentifier
 
 type InternalName C.gss_name_t
 
-type ChannelBindings C.gss_channel_bindings_t
+type ChannelBindings struct {
+	initiatorAddressType, acceptorAddressType uint32
+	initiatorAddress, acceptorAddress, applicationData []byte
+}
 
+type Flags struct {
+	deleg, mutual, replay, sequence, anon, conf, integ bool
+}
+
+/* bytesToBuffer populates a gss_buffer_t with a borrowed reference to the
+ * contents of the slice. */
 func bytesToBuffer(data []byte) (cdesc C.gss_buffer_desc) {
 	value := unsafe.Pointer(&data[0])
 	length := C.size_t(len(data))
@@ -34,6 +43,8 @@ func bytesToBuffer(data []byte) (cdesc C.gss_buffer_desc) {
 	return
 }
 
+/* bufferToBytes creates a byte array using the contents of the passed-in
+ * buffer. */
 func bufferToBytes(cdesc C.gss_buffer_desc) (b []byte) {
 	length := C.int(cdesc.length)
 
@@ -41,6 +52,8 @@ func bufferToBytes(cdesc C.gss_buffer_desc) (b []byte) {
 	return
 }
 
+/* oidToCOid converts an asn1.ObjectIdentifier into an array of encoded bytes,
+ * which is how the C library expects them to be structured. */
 func oidToCOid(oid Oid) (coid C.gss_OID_desc) {
 	b, _ := asn1.Marshal(oid)
 	if b == nil {
@@ -54,6 +67,8 @@ func oidToCOid(oid Oid) (coid C.gss_OID_desc) {
 	return
 }
 
+/* coidToOid produces an asn1.ObjectIdentifier from the library's preferred
+ * bytes-and-length representation. */
 func coidToOid(coid C.gss_OID_desc) (oid Oid) {
 	length := C.int(coid.length)
 	b := C.GoBytes(coid.elements, length)
@@ -62,6 +77,9 @@ func coidToOid(coid C.gss_OID_desc) (oid Oid) {
 	return
 }
 
+/* oidsToCOidSet converts an array of asn1.ObjectIdentifier items into an array
+ * of arrays of encoded bytes-and-lengths, which is how the C library expects
+ * them to be structured. */
 func oidsToCOidSet(oidSet []Oid) (coids C.gss_OID_set) {
 	var major, minor C.OM_uint32
 	if (oidSet == nil) {
@@ -84,6 +102,8 @@ func oidsToCOidSet(oidSet []Oid) (coids C.gss_OID_set) {
 	return
 }
 
+/* coidSetToOids produces an array of asn1.ObjectIdentifier items from the
+ * library's preferred array-of-bytes-and-lengths representation. */
 func coidSetToOids(coids C.gss_OID_set_desc) (oidSet []Oid) {
 	oidSet = make([]Oid, coids.count)
 	if (oidSet == nil) {
@@ -91,7 +111,7 @@ func coidSetToOids(coids C.gss_OID_set_desc) (oidSet []Oid) {
 	}
 
 	for o := 0; o < int(coids.count); o++ {
-		var coid C.gss_OID_desc = C.nth_oid_in_set(&coids, C.uint(o))
+		coid := C.nth_oid_in_set(&coids, C.uint(o))
 		var oid Oid
 		length := C.int(coid.length)
 		b := C.GoBytes(coid.elements, length)
@@ -99,6 +119,30 @@ func coidSetToOids(coids C.gss_OID_set_desc) (oidSet []Oid) {
 		oidSet[o] = oid
 	}
 
+	return
+}
+
+func bindingsToCBindings(bindings *ChannelBindings) (cbindings C.gss_channel_bindings_t) {
+	if bindings == nil {
+		return nil
+	}
+	cbindings.initiator_addrtype = C.OM_uint32(bindings.initiatorAddressType)
+	cbindings.initiator_address = bytesToBuffer(bindings.initiatorAddress)
+	cbindings.acceptor_addrtype = C.OM_uint32(bindings.acceptorAddressType)
+	cbindings.acceptor_address = bytesToBuffer(bindings.acceptorAddress)
+	cbindings.application_data = bytesToBuffer(bindings.applicationData)
+	return
+}
+
+func cbindingsToBindings(cbindings C.gss_channel_bindings_t) (bindings *ChannelBindings) {
+	if cbindings == nil {
+		return nil
+	}
+	bindings.initiatorAddressType = uint32(cbindings.initiator_addrtype)
+	bindings.initiatorAddress = bufferToBytes(cbindings.initiator_address)
+	bindings.acceptorAddressType = uint32(cbindings.acceptor_addrtype)
+	bindings.acceptorAddress = bufferToBytes(cbindings.acceptor_address)
+	bindings.applicationData = bufferToBytes(cbindings.application_data)
 	return
 }
 
@@ -125,8 +169,6 @@ func AquireCred(desiredName InternalName, lifetimeReq uint32, desiredMechs []Oid
 	if actual != nil {
 		actualMechs = coidSetToOids(*actual)
 		major = C.gss_release_oid_set(&minor, &actual)
-	} else {
-		actualMechs = nil
 	}
 	lifetimeRec = uint32(lifetime)
 	return
@@ -206,11 +248,142 @@ func InquireCredByMech(credHandle CredHandle, mechType Oid) (majorStatus, minorS
 	return
 }
 
-func InitSecContext(claimantCredHandle CredHandle, inputContextHandle ContextHandle, targName InternalName, mechType Oid, delegReqFlag, mutualReqFlag, replayDetReqFlag, sequenceReqFlag, anonReqFlag, confReqFlag, integReqFlag bool, lifetimeReq uint32, chanBindings ChannelBindings, inputToken []byte) (majorStatus, minorStatus uint32, outputContextHandle ContextHandle, mechTypeRec Oid, outputToken []byte, delegState, mutualState, replayDetState, sequenceState, anonState, transState, protReadyState, confAvail, integAvail bool, lifetimeRec uint32) {
+func InitSecContext(claimantCredHandle CredHandle, inputContextHandle ContextHandle, targName InternalName, mechType Oid, reqFlags Flags, lifetimeReq uint32, chanBindings *ChannelBindings, inputToken []byte) (majorStatus, minorStatus uint32, outputContextHandle ContextHandle, mechTypeRec Oid, outputToken []byte, recFlags Flags, transState, protReadyState bool, lifetimeRec uint32) {
+	handle := C.gss_cred_id_t(claimantCredHandle)
+	ctx := C.gss_ctx_id_t(inputContextHandle)
+	name := C.gss_name_t(targName)
+	desired := oidToCOid(mechType)
+	lifetime := C.OM_uint32(lifetimeReq)
+	bindings := bindingsToCBindings(chanBindings)
+	var major, minor, flags C.OM_uint32
+	var itoken, otoken C.gss_buffer_desc
+	var actual C.gss_OID
+
+	if inputToken != nil {
+		itoken = bytesToBuffer(inputToken)
+	}
+	if reqFlags.deleg {
+		flags |= C.GSS_C_DELEG_FLAG
+	}
+	if reqFlags.mutual {
+		flags |= C.GSS_C_MUTUAL_FLAG
+	}
+	if reqFlags.replay {
+		flags |= C.GSS_C_REPLAY_FLAG
+	}
+	if reqFlags.sequence {
+		flags |= C.GSS_C_SEQUENCE_FLAG
+	}
+	if reqFlags.anon {
+		flags |= C.GSS_C_ANON_FLAG
+	}
+	if reqFlags.conf {
+		flags |= C.GSS_C_CONF_FLAG
+	}
+	if reqFlags.integ {
+		flags |= C.GSS_C_INTEG_FLAG
+	}
+	major = C.gss_init_sec_context(&minor, handle, &ctx, name, &desired, flags, lifetime, bindings, &itoken, &actual, &otoken, &flags, &lifetime)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	outputContextHandle = ContextHandle(ctx)
+	if actual != nil {
+		mechTypeRec = coidToOid(*actual)
+		major = C.gss_release_oid(&minor, &actual)
+	}
+	if otoken.length > 0 {
+		outputToken = bufferToBytes(otoken)
+		major = C.gss_release_buffer(&minor, &otoken)
+	}
+	if flags & C.GSS_C_DELEG_FLAG != 0 {
+		recFlags.deleg = true
+	}
+	if flags & C.GSS_C_MUTUAL_FLAG != 0 {
+		recFlags.mutual = true
+	}
+	if flags & C.GSS_C_REPLAY_FLAG != 0 {
+		recFlags.replay = true
+	}
+	if flags & C.GSS_C_SEQUENCE_FLAG != 0 {
+		recFlags.sequence = true
+	}
+	if flags & C.GSS_C_ANON_FLAG != 0 {
+		recFlags.anon = true
+	}
+	if flags & C.GSS_C_CONF_FLAG != 0 {
+		recFlags.conf = true
+	}
+	if flags & C.GSS_C_INTEG_FLAG != 0 {
+		recFlags.integ = true
+	}
+	if flags & C.GSS_C_TRANS_FLAG != 0 {
+		transState = true
+	}
+	if flags & C.GSS_C_PROT_READY_FLAG != 0 {
+		protReadyState = true
+	}
+	lifetimeRec = uint32(lifetime)
 	return
 }
 
-func AcceptSecContext(acceptorCredHandle CredHandle, inputContextHandle ContextHandle, chanBindings ChannelBindings, inputToken []byte) (majorStatus, minorStatus uint32, srcName InternalName, mechType Oid, outputContextHandle ContextHandle, delegState, mutualState, replayDetState, sequenceState, anonState, transState, protReadyState, confAvail, integAvail bool, lifetimeRec uint32, delegatedCredHandle CredHandle, outputToken []byte) {
+func AcceptSecContext(acceptorCredHandle CredHandle, inputContextHandle ContextHandle, chanBindings *ChannelBindings, inputToken []byte) (majorStatus, minorStatus uint32, srcName InternalName, mechType Oid, outputContextHandle ContextHandle, recFlags Flags, transState, protReadyState bool, lifetimeRec uint32, delegatedCredHandle CredHandle, outputToken []byte) {
+	handle := C.gss_cred_id_t(acceptorCredHandle)
+	ctx := C.gss_ctx_id_t(inputContextHandle)
+	desired := oidToCOid(mechType)
+	bindings := bindingsToCBindings(chanBindings)
+	var major, minor, flags, lifetime C.OM_uint32
+	var name C.gss_name_t
+	var itoken, otoken C.gss_buffer_desc
+	var actual C.gss_OID
+	var dhandle C.gss_cred_id_t
+
+	if inputToken != nil {
+		itoken = bytesToBuffer(inputToken)
+	}
+
+	major = C.gss_accept_sec_context(&minor, &ctx, handle, &itoken, bindings, &name, &actual, &otoken, &flags, &lifetime, &dhandle)
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	srcName = InternalName(name)
+	if actual != nil {
+		mechType = coidToOid(*actual)
+		major = C.gss_release_oid(&minor, &actual)
+	}
+	outputContextHandle = ContextHandle(ctx)
+	if flags & C.GSS_C_DELEG_FLAG != 0 {
+		recFlags.deleg = true
+	}
+	if flags & C.GSS_C_MUTUAL_FLAG != 0 {
+		recFlags.mutual = true
+	}
+	if flags & C.GSS_C_REPLAY_FLAG != 0 {
+		recFlags.replay = true
+	}
+	if flags & C.GSS_C_SEQUENCE_FLAG != 0 {
+		recFlags.sequence = true
+	}
+	if flags & C.GSS_C_ANON_FLAG != 0 {
+		recFlags.anon = true
+	}
+	if flags & C.GSS_C_CONF_FLAG != 0 {
+		recFlags.conf = true
+	}
+	if flags & C.GSS_C_INTEG_FLAG != 0 {
+		recFlags.integ = true
+	}
+	if flags & C.GSS_C_TRANS_FLAG != 0 {
+		transState = true
+	}
+	if flags & C.GSS_C_PROT_READY_FLAG != 0 {
+		protReadyState = true
+	}
+	lifetimeRec = uint32(lifetime)
+	delegatedCredHandle = CredHandle(dhandle)
+	if otoken.length > 0 {
+		outputToken = bufferToBytes(otoken)
+		major = C.gss_release_buffer(&minor, &otoken)
+	}
 	return
 }
 
