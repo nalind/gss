@@ -36,6 +36,33 @@ static void free_kv_set(gss_key_value_set_desc kvset)
 	}
 	free(kvset.elements);
 }
+static void free_gss_buffer(gss_buffer_desc buffer)
+{
+	free(buffer.value);
+}
+static void free_oid(gss_OID_desc oid)
+{
+	free(oid.elements);
+}
+static void free_oid_set(gss_OID_set buffer)
+{
+	OM_uint32 minor;
+	gss_release_oid_set(&minor, &buffer);
+}
+static void *
+copyOid(unsigned char *bytes, int len)
+{
+	void *ret;
+
+	if (len < 0) {
+		return NULL;
+	}
+	ret = malloc(len);
+	if (ret != NULL) {
+		memcpy(ret, bytes, len);
+	}
+	return ret;
+}
 */
 import "C"
 import "unsafe"
@@ -95,17 +122,18 @@ const (
 	C_AF_X25 = C.GSS_C_AF_X25
 	C_AF_NULLADDR = C.GSS_C_AF_NULLADDR
 
-//	C_NO_NAME
-//	C_NO_BUFFER
-//	C_NO_OID
-//	C_NO_OID_SET
-//	C_NO_CONTEXT
-//	C_NO_CREDENTIAL
-//	C_NO_CHANNEL_BINDINGS
-//	C_EMPTY_BUFFER
+//	C_NO_NAME = nil
+//	C_NO_BUFFER = nil
+//	C_NO_OID = nil
+//	C_NO_OID_SET = nil
+//	C_NO_CONTEXT = nil
+//	C_NO_CREDENTIAL = nil
+//	C_NO_CHANNEL_BINDINGS = nil
+//	C_EMPTY_BUFFER = make([]byte, 0)
 
-	C_NULL_OID
-	C_NULL_OID_SET
+//	C_NULL_OID = nil
+//	C_NULL_OID_SET = nil
+
 	C_QOP_DEFAULT = C.GSS_C_QOP_DEFAULT
 	C_INDEFINITE = C.GSS_C_INDEFINITE
 
@@ -200,9 +228,9 @@ var (
 	Mech_krb5_old = coidToOid(*C.gss_mech_krb5_old)
 	Mech_krb5_wrong = coidToOid(*C.gss_mech_krb5_wrong)
 	Mech_iakerb = coidToOid(*C.gss_mech_iakerb)
-	Mech_set_krb5 = coidSetToOids(*C.gss_mech_set_krb5)
-	Mech_set_krb5_old = coidSetToOids(*C.gss_mech_set_krb5_old)
-	Mech_set_krb5_both = coidSetToOids(*C.gss_mech_set_krb5_both)
+	Mech_set_krb5 = coidSetToOids(C.gss_mech_set_krb5)
+	Mech_set_krb5_old = coidSetToOids(C.gss_mech_set_krb5_old)
+	Mech_set_krb5_both = coidSetToOids(C.gss_mech_set_krb5_both)
 
 	NT_krb5_name = coidToOid(*C.gss_nt_krb5_name)
 	NT_krb5_principal = coidToOid(*C.gss_nt_krb5_principal)
@@ -345,7 +373,7 @@ func coidToOid(coid C.gss_OID_desc) (oid asn1.ObjectIdentifier) {
 /* oidToCOid converts an asn1.ObjectIdentifier into an array of encoded bytes
  * without the tag and length, which is how the C library expects them to be
  * structured. */
-func oidToCOid(oid asn1.ObjectIdentifier) (rawOid []byte, coid C.gss_OID_desc) {
+func oidToCOid(oid asn1.ObjectIdentifier) (coid C.gss_OID_desc) {
 	b, _ := asn1.Marshal(oid)
 	if b == nil {
 		return
@@ -354,12 +382,9 @@ func oidToCOid(oid asn1.ObjectIdentifier) (rawOid []byte, coid C.gss_OID_desc) {
 	if v == nil {
 		return
 	}
-	rawOid = v
-	elements := unsafe.Pointer(&rawOid[0])
-	length := C.OM_uint32(len(rawOid))
-
-	coid.elements = elements
-	coid.length = length
+	length := len(v)
+	coid.elements = C.copyOid((*C.uchar)(&v[0]), C.int(length))
+	coid.length = C.OM_uint32(length)
 	return
 }
 
@@ -368,7 +393,7 @@ func oidToCOid(oid asn1.ObjectIdentifier) (rawOid []byte, coid C.gss_OID_desc) {
  * them to be structured. */
 func oidsToCOidSet(oidSet []asn1.ObjectIdentifier) (coids C.gss_OID_set) {
 	var major, minor C.OM_uint32
-	if (oidSet == nil) {
+	if oidSet == nil {
 		return
 	}
 	major = C.gss_create_empty_oid_set(&minor, &coids)
@@ -377,8 +402,9 @@ func oidsToCOidSet(oidSet []asn1.ObjectIdentifier) (coids C.gss_OID_set) {
 	}
 
 	for _, o := range oidSet {
-		_, oid := oidToCOid(o)
+		oid := oidToCOid(o)
 		major = C.gss_add_oid_set_member(&minor, &oid, &coids)
+		C.free_oid(oid)
 		if major != 0 {
 			major = C.gss_release_oid_set(&minor, &coids)
 			coids = nil
@@ -390,14 +416,18 @@ func oidsToCOidSet(oidSet []asn1.ObjectIdentifier) (coids C.gss_OID_set) {
 
 /* coidSetToOids produces an array of asn1.ObjectIdentifier items from the
  * library's preferred array-of-bytes-and-lengths representation. */
-func coidSetToOids(coids C.gss_OID_set_desc) (oidSet []asn1.ObjectIdentifier) {
+func coidSetToOids(coids *C.gss_OID_set_desc) (oidSet []asn1.ObjectIdentifier) {
+	if coids == nil {
+		return nil
+	}
+
 	oidSet = make([]asn1.ObjectIdentifier, coids.count)
-	if (oidSet == nil) {
+	if oidSet == nil {
 		return
 	}
 
 	for o := 0; o < int(coids.count); o++ {
-		coid := C.nth_oid_in_set(&coids, C.uint(o))
+		coid := C.nth_oid_in_set(coids, C.uint(o))
 		oidSet[o] = coidToOid(coid)
 	}
 
@@ -448,22 +478,15 @@ func AcquireCred(desiredName InternalName, lifetimeReq uint32, desiredMechs []as
 	var desired, actual C.gss_OID_set
 	var handle C.gss_cred_id_t
 
-	if desiredMechs != nil {
-		desired = oidsToCOidSet(desiredMechs)
-	}
-
+	desired = oidsToCOidSet(desiredMechs)
 	major = C.gss_acquire_cred(&minor, name, lifetime, desired, usage, &handle, &actual, &lifetime)
+	C.free_oid_set(desired)
 
-	if desired != nil {
-		major = C.gss_release_oid_set(&minor, &desired)
-	}
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
 	outputCredHandle = CredHandle(handle)
-	if actual != nil {
-		actualMechs = coidSetToOids(*actual)
-		major = C.gss_release_oid_set(&minor, &actual)
-	}
+	actualMechs = coidSetToOids(actual)
+	C.free_oid_set(actual)
 	lifetimeRec = uint32(lifetime)
 	return
 }
@@ -493,17 +516,15 @@ func InquireCred(credHandle CredHandle) (majorStatus, minorStatus uint32, credNa
 	credName = InternalName(name)
 	lifetimeRec = uint32(lifetime)
 	credUsage = uint32(usage)
-	if (mechs != nil) {
-		mechSet = coidSetToOids(*mechs)
-		major = C.gss_release_oid_set(&minor, &mechs)
-	}
+	mechSet = coidSetToOids(mechs)
+	C.free_oid_set(mechs)
 	return
 }
 
 func AddCred(credHandle CredHandle, desiredName InternalName, desiredMech asn1.ObjectIdentifier, initiatorTimeReq, acceptorTimeReq, credUsage uint32, outputCredHandle CredHandle) (majorStatus, minorStatus uint32, outputCredHandleRec CredHandle, actualMechs []asn1.ObjectIdentifier, initiatorTimeRec, acceptorTimeRec uint32) {
 	handle := C.gss_cred_id_t(credHandle)
 	name := C.gss_name_t(desiredName)
-	_, mech := oidToCOid(desiredMech)
+	mech := oidToCOid(desiredMech)
 	itime := C.OM_uint32(initiatorTimeReq)
 	atime := C.OM_uint32(acceptorTimeReq)
 	usage := C.gss_cred_usage_t(credUsage)
@@ -511,14 +532,13 @@ func AddCred(credHandle CredHandle, desiredName InternalName, desiredMech asn1.O
 	var mechs C.gss_OID_set
 
 	major = C.gss_add_cred(&minor, handle, name, &mech, usage, itime, atime, &handle, &mechs, &itime, &atime)
+	C.free_oid(mech)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
 	outputCredHandleRec = CredHandle(handle)
-	if mechs != nil {
-		actualMechs = coidSetToOids(*mechs)
-		major = C.gss_release_oid_set(&minor, &mechs)
-	}
+	actualMechs = coidSetToOids(mechs)
+	C.free_oid_set(mechs)
 	initiatorTimeRec = uint32(itime)
 	acceptorTimeRec = uint32(atime)
 	return
@@ -526,12 +546,13 @@ func AddCred(credHandle CredHandle, desiredName InternalName, desiredMech asn1.O
 
 func InquireCredByMech(credHandle CredHandle, mechType asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, credName InternalName, initiatorLifetimeRec, acceptorLifetimeRec, credUsage uint32) {
 	handle := C.gss_cred_id_t(credHandle)
-	_, mech := oidToCOid(mechType)
+	mech := oidToCOid(mechType)
 	var major, minor, ilife, alife C.OM_uint32
 	var name C.gss_name_t
 	var usage C.gss_cred_usage_t
 
 	major = C.gss_inquire_cred_by_mech(&minor, handle, &mech, &name, &ilife, &alife, &usage)
+	C.free_oid(mech)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
@@ -546,7 +567,7 @@ func InitSecContext(claimantCredHandle CredHandle, contextHandle *ContextHandle,
 	handle := C.gss_cred_id_t(claimantCredHandle)
 	ctx := C.gss_ctx_id_t(*contextHandle)
 	name := C.gss_name_t(targName)
-	_, desired := oidToCOid(mechType)
+	desired := oidToCOid(mechType)
 	lifetime := C.OM_uint32(lifetimeReq)
 	bindings := bindingsToCBindings(chanBindings)
 	var major, minor, flags C.OM_uint32
@@ -580,7 +601,9 @@ func InitSecContext(claimantCredHandle CredHandle, contextHandle *ContextHandle,
 	if reqFlags.integ {
 		flags |= C.GSS_C_INTEG_FLAG
 	}
+
 	major = C.gss_init_sec_context(&minor, handle, &ctx, name, &desired, flags, lifetime, bindings, &itoken, &actual, &otoken, &flags, &lifetime)
+	C.free_oid(desired)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
@@ -881,11 +904,12 @@ func Unwrap(contextHandle ContextHandle, inputMessage []byte) (majorStatus, mino
 func DisplayStatus(statusValue uint32, statusType int, mechType asn1.ObjectIdentifier) (majorStatus, minorStatus, messageContext uint32, statusString string) {
 	value := C.OM_uint32(statusValue)
 	stype := C.int(statusType)
-	_, mech := oidToCOid(mechType)
+	mech := oidToCOid(mechType)
 	var major, minor, mctx C.OM_uint32
 	var status C.gss_buffer_desc
 
 	major = C.gss_display_status(&minor, value, stype, &mech, &mctx, &status)
+	C.free_oid(mech)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
@@ -904,10 +928,8 @@ func IndicateMechs() (majorStatus, minorStatus uint32, mechSet []asn1.ObjectIden
 	major = C.gss_indicate_mechs(&minor, &mechs)
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	if mechs != nil {
-		mechSet = coidSetToOids(*mechs)
-		major = C.gss_release_oid_set(&minor, &mechs)
-	}
+	mechSet = coidSetToOids(mechs)
+	C.free_oid_set(mechs)
 	return
 }
 
@@ -947,7 +969,7 @@ func DisplayName(name InternalName) (majorStatus, minorStatus uint32, nameString
 }
 
 func ImportName(inputName string, nameType asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, outputName InternalName) {
-	_, ntype := oidToCOid(nameType)
+	ntype := oidToCOid(nameType)
 	var major, minor C.OM_uint32
 	var name C.gss_buffer_desc
 	var iname C.gss_name_t
@@ -956,8 +978,9 @@ func ImportName(inputName string, nameType asn1.ObjectIdentifier) (majorStatus, 
 	name.value = unsafe.Pointer(C.CString(inputName))
 
 	major = C.gss_import_name(&minor, &name, &ntype, &iname)
+	C.free_gss_buffer(name)
+	C.free_oid(ntype)
 
-	C.free(name.value)
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
 	outputName = InternalName(iname)
@@ -978,18 +1001,17 @@ func ReleaseName(inputName InternalName) (majorStatus, minorStatus uint32) {
 /* ReleaseBuffer ReleaseOidSet CreateEmptyOidSet AddOidSetMember TestOidSetMember */
 
 func InquireNamesForMech(inputMechType asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, nameTypeSet []asn1.ObjectIdentifier) {
-	_, mech := oidToCOid(inputMechType)
+	mech := oidToCOid(inputMechType)
 	var major, minor C.OM_uint32
 	var ntypes C.gss_OID_set
 
 	major = C.gss_inquire_names_for_mech(&minor, &mech, &ntypes)
+	C.free_oid(mech)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	if ntypes != nil {
-		nameTypeSet = coidSetToOids(*ntypes)
-		major = C.gss_release_oid_set(&minor, &ntypes)
-	}
+	nameTypeSet = coidSetToOids(ntypes)
+	C.free_oid_set(ntypes)
 	return
 }
 
@@ -1002,20 +1024,19 @@ func InquireMechsForName(inputName InternalName) (majorStatus, minorStatus uint3
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	if mechs != nil {
-		mechTypes = coidSetToOids(*mechs)
-		major = C.gss_release_oid_set(&minor, &mechs)
-	}
+	mechTypes = coidSetToOids(mechs)
+	C.free_oid_set(mechs)
 	return
 }
 
 func CanonicalizeName(inputName InternalName, mechType asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, outputName InternalName) {
 	name := C.gss_name_t(inputName)
-	_, mech := oidToCOid(mechType)
+	mech := oidToCOid(mechType)
 	var major, minor C.OM_uint32
 	var newname C.gss_name_t
 
 	major = C.gss_canonicalize_name(&minor, name, &mech, &newname)
+	C.free_oid(mech)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
@@ -1072,7 +1093,7 @@ func PseudoRandom(contextHandle ContextHandle, prfKey int, prfIn []byte, desired
 func StoreCred(credHandle CredHandle, credUsage uint32, desiredMech asn1.ObjectIdentifier, overwriteCred, defCred bool) (majorStatus, minorStatus uint32, elementsStored []asn1.ObjectIdentifier, credUsageStored uint32) {
 	handle := C.gss_cred_id_t(credHandle)
 	usage := C.gss_cred_usage_t(credUsage)
-	_, mech := oidToCOid(desiredMech)
+	mech := oidToCOid(desiredMech)
 	var major, minor, overwrite, def C.OM_uint32
 	var stored C.gss_OID_set
 
@@ -1082,14 +1103,14 @@ func StoreCred(credHandle CredHandle, credUsage uint32, desiredMech asn1.ObjectI
 	if defCred {
 		def = 1
 	}
+
 	major = C.gss_store_cred(&minor, handle, usage, &mech, overwrite, def, &stored, &usage)
+	C.free_oid(mech)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	if stored != nil {
-		elementsStored = coidSetToOids(*stored)
-		major = C.gss_release_oid_set(&minor, &stored)
-	}
+	elementsStored = coidSetToOids(stored)
+	C.free_oid_set(stored)
 	credUsageStored = uint32(usage)
 	return
 }
@@ -1100,9 +1121,7 @@ func SetNegMechs(credHandle CredHandle, mechSet []asn1.ObjectIdentifier) (majorS
 	var major, minor C.OM_uint32
 
 	major = C.gss_set_neg_mechs(&minor, handle, mechs)
-	if mechs != nil {
-		major = C.gss_release_oid_set(&minor, &mechs)
-	}
+	C.free_oid_set(mechs)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
@@ -1117,22 +1136,14 @@ func IndicateMechsByAttrs(desiredMechAttrs, exceptMechAttrs, criticalMechAttrs [
 	var selected C.gss_OID_set
 
 	major = C.gss_indicate_mechs_by_attrs(&minor, desired, except, critical, &selected)
-	if desired != nil {
-		major = C.gss_release_oid_set(&minor, &desired)
-	}
-	if except != nil {
-		major = C.gss_release_oid_set(&minor, &except)
-	}
-	if critical != nil {
-		major = C.gss_release_oid_set(&minor, &critical)
-	}
+	C.free_oid_set(desired)
+	C.free_oid_set(except)
+	C.free_oid_set(critical)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	if selected != nil {
-		mechs = coidSetToOids(*selected)
-		major = C.gss_release_oid_set(&minor, &selected)
-	}
+	mechs = coidSetToOids(selected)
+	C.free_oid_set(selected)
 	return
 }
 
@@ -1154,11 +1165,12 @@ func Krb5ExtractAuthzDataFromSecContext(contextHandle ContextHandle, adType int)
 
 func PNameToUid(name InternalName, nmech asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, uid string) {
 	iname := C.gss_name_t(name)
-	_, mech := oidToCOid(nmech)
+	mech := oidToCOid(nmech)
 	var major, minor C.OM_uint32
 	var id C.uid_t
 
 	major = C.gss_pname_to_uid(&minor, iname, &mech, &id)
+	C.free_oid(mech)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
@@ -1171,11 +1183,12 @@ func PNameToUid(name InternalName, nmech asn1.ObjectIdentifier) (majorStatus, mi
 
 func Localname(name InternalName, mechType asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, localName []byte) {
 	iname := C.gss_name_t(name)
-	_, mech := oidToCOid(mechType)
+	mech := oidToCOid(mechType)
 	var major, minor C.OM_uint32
 	var lname C.gss_buffer_desc
 
 	major = C.gss_localname(&major, iname, &mech, &lname)
+	C.free_oid(mech)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
@@ -1221,17 +1234,13 @@ func AcquireCredWithPassword(desiredName InternalName, password []byte, timeReq 
 	var handle C.gss_cred_id_t
 
 	major = C.gss_acquire_cred_with_password(&minor, name, &pwd, time, dmechs, usage, &handle, &amechs, &time)
+	C.free_oid_set(dmechs)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	if dmechs != nil {
-		major = C.gss_release_oid_set(&minor, &dmechs)
-	}
 	cred = CredHandle(handle)
-	if amechs != nil {
-		actualMechs = coidSetToOids(*amechs)
-		major = C.gss_release_oid_set(&minor, &amechs)
-	}
+	actualMechs = coidSetToOids(amechs)
+	C.free_oid_set(amechs)
 	timeRec = uint32(time)
 	return
 }
@@ -1249,14 +1258,13 @@ func AddCredWithPassword(icred CredHandle, desiredName InternalName, desiredMech
 	var amechs C.gss_OID_set
 
 	major = C.gss_add_cred_with_password(&minor, cred, name, dmech, &pwd, usage, itime, atime, &cred, &amechs, &itime, &atime)
+	C.free_oid(dmech)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
 	ocred = CredHandle(cred)
-	if amechs != nil {
-		actualMechs = coidSetToOids(*amechs)
-		major = C.gss_release_oid_set(&minor, &amechs)
-	}
+	actualMechs = coidSetToOids(amechs)
+	C.free_oid_set(amechs)
 	initiatorTimeRec = uint32(itime)
 	acceptorTimeRec = uint32(atime)
 	return
@@ -1265,11 +1273,12 @@ func AddCredWithPassword(icred CredHandle, desiredName InternalName, desiredMech
 
 func InquireSecContextByOid(contextHandle ContextHandle, desiredObject asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, dataSet [][]byte) {
 	handle := C.gss_ctx_id_t(contextHandle)
-	_, obj := oidToCOid(desiredObject)
+	obj := oidToCOid(desiredObject)
 	var major, minor C.OM_uint32
 	var data C.gss_buffer_set_t
 
 	major = C.gss_inquire_sec_context_by_oid(&minor, handle, &obj, &data)
+	C.free_oid(obj)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
@@ -1282,11 +1291,12 @@ func InquireSecContextByOid(contextHandle ContextHandle, desiredObject asn1.Obje
 
 func InquireCredByOid(credHandle CredHandle, desiredObject asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, dataSet [][]byte) {
 	handle := C.gss_cred_id_t(credHandle)
-	_, obj := oidToCOid(desiredObject)
+	obj := oidToCOid(desiredObject)
 	var major, minor C.OM_uint32
 	var data C.gss_buffer_set_t
 
 	major = C.gss_inquire_cred_by_oid(&minor, handle, &obj, &data)
+	C.free_oid(obj)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
@@ -1299,11 +1309,12 @@ func InquireCredByOid(credHandle CredHandle, desiredObject asn1.ObjectIdentifier
 
 func SetSecContextOption(contextHandle *ContextHandle, desiredObject asn1.ObjectIdentifier, value []byte) (majorStatus, minorStatus uint32) {
 	handle := C.gss_ctx_id_t(*contextHandle)
-	_, obj := oidToCOid(desiredObject)
+	obj := oidToCOid(desiredObject)
 	val := bytesToBuffer(value)
 	var major, minor C.OM_uint32
 
 	major = C.gss_set_sec_context_option(&minor, &handle, &obj, &val)
+	C.free_oid(obj)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
@@ -1313,11 +1324,12 @@ func SetSecContextOption(contextHandle *ContextHandle, desiredObject asn1.Object
 
 func SetCredOption(credHandle *CredHandle, desiredObject asn1.ObjectIdentifier, value []byte) (majorStatus, minorStatus uint32) {
 	handle := C.gss_cred_id_t(*credHandle)
-	_, obj := oidToCOid(desiredObject)
+	obj := oidToCOid(desiredObject)
 	val := bytesToBuffer(value)
 	var major, minor C.OM_uint32
 
 	major = C.gss_set_cred_option(&minor, &handle, &obj, &val)
+	C.free_oid(obj)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
@@ -1326,12 +1338,14 @@ func SetCredOption(credHandle *CredHandle, desiredObject asn1.ObjectIdentifier, 
 }
 
 func MechInvoke(desiredMech, desiredObject asn1.ObjectIdentifier, value *[]byte) (majorStatus, minorStatus uint32) {
-	_, mech := oidToCOid(desiredMech)
-	_, obj := oidToCOid(desiredObject)
+	mech := oidToCOid(desiredMech)
+	obj := oidToCOid(desiredObject)
 	val := bytesToBuffer(*value)
 	var major, minor C.OM_uint32
 
 	major = C.gssspi_mech_invoke(&minor, &mech, &obj, &val)
+	C.free_oid(mech)
+	C.free_oid(obj)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
@@ -1370,17 +1384,13 @@ func AcquireCredImpersonateName(impersonatorCredHandle CredHandle, desiredName I
 	var amechs C.gss_OID_set
 
 	major = C.gss_acquire_cred_impersonate_name(&minor, cred, name, time, dmechs, usage, &cred, &amechs, &time)
+	C.free_oid_set(dmechs)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	if dmechs != nil {
-		major = C.gss_release_oid_set(&minor, &dmechs)
-	}
 	outputCredHandle = CredHandle(cred)
-	if amechs != nil {
-		actualMechs = coidSetToOids(*amechs)
-		major = C.gss_release_oid_set(&minor, &amechs)
-	}
+	actualMechs = coidSetToOids(amechs)
+	C.free_oid_set(amechs)
 	timeRec = uint32(time)
 	return
 }
@@ -1389,7 +1399,7 @@ func AddCredImpersonateName(inputCredHandle, impersonatorCredHandle CredHandle, 
 	cred := C.gss_cred_id_t(inputCredHandle)
 	icred := C.gss_cred_id_t(impersonatorCredHandle)
 	name := C.gss_name_t(desiredName)
-	_, mech := oidToCOid(desiredMech)
+	mech := oidToCOid(desiredMech)
 	usage := C.gss_cred_usage_t(credUsage)
 	itime := C.OM_uint32(initiatorTimeReq)
 	atime := C.OM_uint32(acceptorTimeReq)
@@ -1398,14 +1408,13 @@ func AddCredImpersonateName(inputCredHandle, impersonatorCredHandle CredHandle, 
 	var amechs C.gss_OID_set
 
 	major = C.gss_add_cred_impersonate_name(&minor, cred, icred, name, &mech, usage, itime, atime, &ocred, &amechs, &itime, &atime)
+	C.free_oid(mech)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
 	outputCredHandle = CredHandle(ocred)
-	if amechs != nil {
-		actualMechs = coidSetToOids(*amechs)
-		major = C.gss_release_oid_set(&minor, &amechs)
-	}
+	actualMechs = coidSetToOids(amechs)
+	C.free_oid_set(amechs)
 	initiatorTimeRec = uint32(itime)
 	acceptorTimeRec = uint32(atime)
 	return
@@ -1413,11 +1422,12 @@ func AddCredImpersonateName(inputCredHandle, impersonatorCredHandle CredHandle, 
 
 func DisplayNameExt(name InternalName, displayAsNameType asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, displayName []byte) {
 	iname := C.gss_name_t(name)
-	_, ntype := oidToCOid(displayAsNameType)
+	ntype := oidToCOid(displayAsNameType)
 	var major, minor C.OM_uint32
 	var dname C.gss_buffer_desc
 
 	major = C.gss_display_name_ext(&minor, iname, &ntype, &dname)
+	C.free_oid(ntype)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
@@ -1531,16 +1541,14 @@ func AcquireCredFrom(desiredName InternalName, timeReq uint32, desiredMechs []as
 	var amechs C.gss_OID_set
 
 	major = C.gss_acquire_cred_from(&minor, name, time, dmechs, usage, &kvset, &cred, &amechs, &time)
+	C.free_oid_set(dmechs)
 	C.free_kv_set(kvset)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	major = C.gss_release_oid_set(&minor, &dmechs)
 	outputCredHandle = CredHandle(cred)
-	if amechs != nil {
-		actualMechs = coidSetToOids(*amechs)
-		major = C.gss_release_oid_set(&minor, &amechs)
-	}
+	actualMechs = coidSetToOids(amechs)
+	C.free_oid_set(amechs)
 	timeRec = uint32(time)
 	return
 }
@@ -1548,7 +1556,7 @@ func AcquireCredFrom(desiredName InternalName, timeReq uint32, desiredMechs []as
 func AddCredFrom(inputCredHandle CredHandle, desiredName InternalName, desiredMech asn1.ObjectIdentifier, desiredCredUsage, initiatorTimeReq, acceptorTimeReq uint32, credStore [][2]string) (majorStatus, minorStatus uint32, outputCredHandle CredHandle, actualMechs []asn1.ObjectIdentifier, initiatorTimeRec, acceptorTimeRec uint32) {
 	cred := C.gss_cred_id_t(inputCredHandle)
 	name := C.gss_name_t(desiredName)
-	_, mech := oidToCOid(desiredMech)
+	mech := oidToCOid(desiredMech)
 	usage := C.gss_cred_usage_t(desiredCredUsage)
 	itime := C.OM_uint32(initiatorTimeReq)
 	atime := C.OM_uint32(acceptorTimeReq)
@@ -1557,14 +1565,13 @@ func AddCredFrom(inputCredHandle CredHandle, desiredName InternalName, desiredMe
 	var mechs C.gss_OID_set
 
 	major = C.gss_add_cred_from(&minor, cred, name, &mech, usage, itime, atime, &kvset, &cred, &mechs, &itime, &atime)
+	C.free_oid(mech)
 	C.free_kv_set(kvset)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	if mechs != nil {
-		actualMechs = coidSetToOids(*mechs)
-		major = C.gss_release_oid_set(&minor, &mechs)
-	}
+	actualMechs = coidSetToOids(mechs)
+	C.free_oid_set(mechs)
 	initiatorTimeRec = uint32(itime)
 	acceptorTimeRec = uint32(atime)
 	return
@@ -1573,7 +1580,7 @@ func AddCredFrom(inputCredHandle CredHandle, desiredName InternalName, desiredMe
 func StoreCredInto(inputCredHandle CredHandle, desiredCredUsage uint32, desiredMech asn1.ObjectIdentifier, overwriteCred, defaultCred bool, credStore [][2]string) (majorStatus, minorStatus uint32, elementsStored []asn1.ObjectIdentifier, credUsage uint32) {
 	cred := C.gss_cred_id_t(inputCredHandle)
 	usage := C.gss_cred_usage_t(credUsage)
-	_, mech := oidToCOid(desiredMech)
+	mech := oidToCOid(desiredMech)
 	kvset := credStoreToKVSet(credStore)
 	var major, minor, over, def C.OM_uint32
 	var mechs C.gss_OID_set
@@ -1586,14 +1593,13 @@ func StoreCredInto(inputCredHandle CredHandle, desiredCredUsage uint32, desiredM
 	}
 
 	major = C.gss_store_cred_into(&minor, cred, usage, &mech, over, def, &kvset, &mechs, &usage)
+	C.free_oid(mech)
 	C.free_kv_set(kvset)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	if mechs != nil {
-		elementsStored = coidSetToOids(*mechs)
-		major = C.gss_release_oid_set(&minor, &mechs)
-	}
+	elementsStored = coidSetToOids(mechs)
+	C.free_oid_set(mechs)
 	credUsage = uint32(usage)
 	return
 }
