@@ -252,7 +252,7 @@ type ChannelBindings struct {
 }
 
 type Flags struct {
-	deleg, delegPolicy, mutual, replay, sequence, anon, conf, integ bool
+	Deleg, DelegPolicy, Mutual, Replay, Sequence, Anon, Conf, Integ bool
 }
 
 type IOV struct {
@@ -493,6 +493,7 @@ func AcquireCred(desiredName InternalName, lifetimeReq uint32, desiredMechs []as
 	var handle C.gss_cred_id_t
 
 	desired = oidsToCOidSet(desiredMechs)
+
 	major = C.gss_acquire_cred(&minor, name, lifetime, desired, usage, &handle, &actual, &lifetime)
 	C.free_oid_set(desired)
 
@@ -542,15 +543,16 @@ func AddCred(credHandle CredHandle, desiredName InternalName, desiredMech asn1.O
 	itime := C.OM_uint32(initiatorTimeReq)
 	atime := C.OM_uint32(acceptorTimeReq)
 	usage := C.gss_cred_usage_t(credUsage)
+	ohandle := C.gss_cred_id_t(outputCredHandle)
 	var major, minor C.OM_uint32
 	var mechs C.gss_OID_set
 
-	major = C.gss_add_cred(&minor, handle, name, mech, usage, itime, atime, &handle, &mechs, &itime, &atime)
+	major = C.gss_add_cred(&minor, handle, name, mech, usage, itime, atime, &ohandle, &mechs, &itime, &atime)
 	C.free_oid(mech)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	outputCredHandleRec = CredHandle(handle)
+	outputCredHandleRec = CredHandle(ohandle)
 	actualMechs = coidSetToOids(mechs)
 	C.free_oid_set(mechs)
 	initiatorTimeRec = uint32(itime)
@@ -591,37 +593,37 @@ func InitSecContext(claimantCredHandle CredHandle, contextHandle *ContextHandle,
 	if inputToken != nil {
 		itoken = bytesToBuffer(inputToken)
 	}
-	if reqFlags.deleg {
+	if reqFlags.Deleg {
 		flags |= C.GSS_C_DELEG_FLAG
 	}
-	if reqFlags.delegPolicy {
+	if reqFlags.DelegPolicy {
 		flags |= C.GSS_C_DELEG_POLICY_FLAG
 	}
-	if reqFlags.mutual {
+	if reqFlags.Mutual {
 		flags |= C.GSS_C_MUTUAL_FLAG
 	}
-	if reqFlags.replay {
+	if reqFlags.Replay {
 		flags |= C.GSS_C_REPLAY_FLAG
 	}
-	if reqFlags.sequence {
+	if reqFlags.Sequence {
 		flags |= C.GSS_C_SEQUENCE_FLAG
 	}
-	if reqFlags.anon {
+	if reqFlags.Anon {
 		flags |= C.GSS_C_ANON_FLAG
 	}
-	if reqFlags.conf {
+	if reqFlags.Conf {
 		flags |= C.GSS_C_CONF_FLAG
 	}
-	if reqFlags.integ {
+	if reqFlags.Integ {
 		flags |= C.GSS_C_INTEG_FLAG
 	}
 
 	major = C.gss_init_sec_context(&minor, handle, &ctx, name, desired, flags, lifetime, bindings, &itoken, &actual, &otoken, &flags, &lifetime)
 	C.free_oid(desired)
 
+	*contextHandle = ContextHandle(ctx)
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	*contextHandle = ContextHandle(ctx)
 	if actual != nil {
 		mechTypeRec = coidToOid(*actual)
 		major = C.gss_release_oid(&minor, &actual)
@@ -631,28 +633,28 @@ func InitSecContext(claimantCredHandle CredHandle, contextHandle *ContextHandle,
 		major = C.gss_release_buffer(&minor, &otoken)
 	}
 	if flags&C.GSS_C_DELEG_FLAG != 0 {
-		recFlags.deleg = true
+		recFlags.Deleg = true
 	}
 	if flags&C.GSS_C_DELEG_POLICY_FLAG != 0 {
-		recFlags.delegPolicy = true
+		recFlags.DelegPolicy = true
 	}
 	if flags&C.GSS_C_MUTUAL_FLAG != 0 {
-		recFlags.mutual = true
+		recFlags.Mutual = true
 	}
 	if flags&C.GSS_C_REPLAY_FLAG != 0 {
-		recFlags.replay = true
+		recFlags.Replay = true
 	}
 	if flags&C.GSS_C_SEQUENCE_FLAG != 0 {
-		recFlags.sequence = true
+		recFlags.Sequence = true
 	}
 	if flags&C.GSS_C_ANON_FLAG != 0 {
-		recFlags.anon = true
+		recFlags.Anon = true
 	}
 	if flags&C.GSS_C_CONF_FLAG != 0 {
-		recFlags.conf = true
+		recFlags.Conf = true
 	}
 	if flags&C.GSS_C_INTEG_FLAG != 0 {
-		recFlags.integ = true
+		recFlags.Integ = true
 	}
 	if flags&C.GSS_C_TRANS_FLAG != 0 {
 		transState = true
@@ -679,6 +681,7 @@ func AcceptSecContext(acceptorCredHandle CredHandle, contextHandle *ContextHandl
 	}
 
 	major = C.gss_accept_sec_context(&minor, &ctx, handle, &itoken, bindings, &name, &actual, &otoken, &flags, &lifetime, &dhandle)
+	*contextHandle = ContextHandle(ctx)
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
 	srcName = InternalName(name)
@@ -686,27 +689,26 @@ func AcceptSecContext(acceptorCredHandle CredHandle, contextHandle *ContextHandl
 		mechType = coidToOid(*actual)
 		major = C.gss_release_oid(&minor, &actual)
 	}
-	*contextHandle = ContextHandle(ctx)
 	if flags&C.GSS_C_DELEG_FLAG != 0 {
-		recFlags.deleg = true
+		recFlags.Deleg = true
 	}
 	if flags&C.GSS_C_MUTUAL_FLAG != 0 {
-		recFlags.mutual = true
+		recFlags.Mutual = true
 	}
 	if flags&C.GSS_C_REPLAY_FLAG != 0 {
-		recFlags.replay = true
+		recFlags.Replay = true
 	}
 	if flags&C.GSS_C_SEQUENCE_FLAG != 0 {
-		recFlags.sequence = true
+		recFlags.Sequence = true
 	}
 	if flags&C.GSS_C_ANON_FLAG != 0 {
-		recFlags.anon = true
+		recFlags.Anon = true
 	}
 	if flags&C.GSS_C_CONF_FLAG != 0 {
-		recFlags.conf = true
+		recFlags.Conf = true
 	}
 	if flags&C.GSS_C_INTEG_FLAG != 0 {
-		recFlags.integ = true
+		recFlags.Integ = true
 	}
 	if flags&C.GSS_C_TRANS_FLAG != 0 {
 		transState = true
@@ -799,8 +801,6 @@ func WrapSizeLimit(contextHandle ContextHandle, confReqFlag bool, qopReq uint32,
 
 	if confReqFlag {
 		conf = 1
-	} else {
-		conf = 0
 	}
 
 	major = C.gss_wrap_size_limit(&minor, handle, conf, qop, output, &input)
@@ -880,6 +880,9 @@ func Wrap(contextHandle ContextHandle, confReq bool, qopReq uint32, inputMessage
 	var msg, wrapped C.gss_buffer_desc
 	var conf C.int
 
+	if confReq {
+		conf = 1
+	}
 	msg = bytesToBuffer(inputMessage)
 
 	major = C.gss_wrap(&minor, handle, conf, qop, &msg, &conf, &wrapped)
@@ -1330,9 +1333,9 @@ func SetSecContextOption(contextHandle *ContextHandle, desiredObject asn1.Object
 	major = C.gss_set_sec_context_option(&minor, &handle, obj, &val)
 	C.free_oid(obj)
 
+	*contextHandle = ContextHandle(handle)
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	*contextHandle = ContextHandle(handle)
 	return
 }
 
@@ -1345,9 +1348,9 @@ func SetCredOption(credHandle *CredHandle, desiredObject asn1.ObjectIdentifier, 
 	major = C.gss_set_cred_option(&minor, &handle, obj, &val)
 	C.free_oid(obj)
 
+	*credHandle = CredHandle(handle)
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	*credHandle = CredHandle(handle)
 	return
 }
 
@@ -1361,9 +1364,9 @@ func MechInvoke(desiredMech, desiredObject asn1.ObjectIdentifier, value *[]byte)
 	C.free_oid(mech)
 	C.free_oid(obj)
 
+	*value = bufferToBytes(val)
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	*value = bufferToBytes(val)
 	return
 }
 
@@ -1451,6 +1454,7 @@ func DisplayNameExt(name InternalName, displayAsNameType asn1.ObjectIdentifier) 
 	}
 	return
 }
+
 func InquireName(name InternalName) (majorStatus, minorStatus uint32, nameIsMN bool, mnMech asn1.ObjectIdentifier, attrs [][]byte) {
 	iname := C.gss_name_t(name)
 	var major, minor C.OM_uint32
@@ -1584,6 +1588,7 @@ func AddCredFrom(inputCredHandle CredHandle, desiredName InternalName, desiredMe
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
+	outputCredHandle = CredHandle(cred)
 	actualMechs = coidSetToOids(mechs)
 	C.free_oid_set(mechs)
 	initiatorTimeRec = uint32(itime)
@@ -1593,7 +1598,7 @@ func AddCredFrom(inputCredHandle CredHandle, desiredName InternalName, desiredMe
 
 func StoreCredInto(inputCredHandle CredHandle, desiredCredUsage uint32, desiredMech asn1.ObjectIdentifier, overwriteCred, defaultCred bool, credStore [][2]string) (majorStatus, minorStatus uint32, elementsStored []asn1.ObjectIdentifier, credUsage uint32) {
 	cred := C.gss_cred_id_t(inputCredHandle)
-	usage := C.gss_cred_usage_t(credUsage)
+	usage := C.gss_cred_usage_t(desiredCredUsage)
 	mech := oidToCOid(desiredMech)
 	kvset := credStoreToKVSet(credStore)
 	var major, minor, over, def C.OM_uint32
