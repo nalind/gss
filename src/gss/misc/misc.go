@@ -7,8 +7,12 @@ import "os"
 import "encoding/binary"
 import "encoding/asn1"
 
-func DisplayError(major, minor uint32, mech *asn1.ObjectIdentifier) {
+func DisplayError(when string, major, minor uint32, mech *asn1.ObjectIdentifier) {
 	fmt.Print(gss.DisplayStatus(major, gss.C_GSS_CODE, nil))
+	fmt.Printf(" ")
+	if len(when) > 0 {
+		fmt.Printf("while %s", when)
+	}
 	fmt.Printf("\n")
 	if mech != nil {
 		fmt.Print(gss.DisplayStatus(major, gss.C_MECH_CODE, *mech))

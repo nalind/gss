@@ -579,59 +579,35 @@ func InquireCredByMech(credHandle CredHandle, mechType asn1.ObjectIdentifier) (m
 	return
 }
 
-func InitSecContext(claimantCredHandle CredHandle, contextHandle *ContextHandle, targName InternalName, mechType asn1.ObjectIdentifier, reqFlags Flags, lifetimeReq uint32, chanBindings *ChannelBindings, inputToken []byte) (majorStatus, minorStatus uint32, mechTypeRec asn1.ObjectIdentifier, outputToken []byte, recFlags Flags, transState, protReadyState bool, lifetimeRec uint32) {
-	handle := C.gss_cred_id_t(claimantCredHandle)
-	ctx := C.gss_ctx_id_t(*contextHandle)
-	name := C.gss_name_t(targName)
-	desired := oidToCOid(mechType)
-	lifetime := C.OM_uint32(lifetimeReq)
-	bindings := bindingsToCBindings(chanBindings)
-	var major, minor, flags C.OM_uint32
-	var itoken, otoken C.gss_buffer_desc
-	var actual C.gss_OID
+func flagsToInt(flags Flags) (recFlags C.OM_uint32) {
+	if flags.Deleg {
+		recFlags |= C.GSS_C_DELEG_FLAG
+	}
+	if flags.DelegPolicy {
+		recFlags |= C.GSS_C_DELEG_POLICY_FLAG
+	}
+	if flags.Mutual {
+		recFlags |= C.GSS_C_MUTUAL_FLAG
+	}
+	if flags.Replay {
+		recFlags |= C.GSS_C_REPLAY_FLAG
+	}
+	if flags.Sequence {
+		recFlags |= C.GSS_C_SEQUENCE_FLAG
+	}
+	if flags.Anon {
+		recFlags |= C.GSS_C_ANON_FLAG
+	}
+	if flags.Conf {
+		recFlags |= C.GSS_C_CONF_FLAG
+	}
+	if flags.Integ {
+		recFlags |= C.GSS_C_INTEG_FLAG
+	}
+	return
+}
 
-	if inputToken != nil {
-		itoken = bytesToBuffer(inputToken)
-	}
-	if reqFlags.Deleg {
-		flags |= C.GSS_C_DELEG_FLAG
-	}
-	if reqFlags.DelegPolicy {
-		flags |= C.GSS_C_DELEG_POLICY_FLAG
-	}
-	if reqFlags.Mutual {
-		flags |= C.GSS_C_MUTUAL_FLAG
-	}
-	if reqFlags.Replay {
-		flags |= C.GSS_C_REPLAY_FLAG
-	}
-	if reqFlags.Sequence {
-		flags |= C.GSS_C_SEQUENCE_FLAG
-	}
-	if reqFlags.Anon {
-		flags |= C.GSS_C_ANON_FLAG
-	}
-	if reqFlags.Conf {
-		flags |= C.GSS_C_CONF_FLAG
-	}
-	if reqFlags.Integ {
-		flags |= C.GSS_C_INTEG_FLAG
-	}
-
-	major = C.gss_init_sec_context(&minor, handle, &ctx, name, desired, flags, lifetime, bindings, &itoken, &actual, &otoken, &flags, &lifetime)
-	C.free_oid(desired)
-
-	*contextHandle = ContextHandle(ctx)
-	majorStatus = uint32(major)
-	minorStatus = uint32(minor)
-	if actual != nil {
-		mechTypeRec = coidToOid(*actual)
-		major = C.gss_release_oid(&minor, &actual)
-	}
-	if otoken.length > 0 {
-		outputToken = bufferToBytes(otoken)
-		major = C.gss_release_buffer(&minor, &otoken)
-	}
+func flagsToFlags(flags C.OM_uint32) (recFlags Flags) {
 	if flags&C.GSS_C_DELEG_FLAG != 0 {
 		recFlags.Deleg = true
 	}
@@ -656,6 +632,40 @@ func InitSecContext(claimantCredHandle CredHandle, contextHandle *ContextHandle,
 	if flags&C.GSS_C_INTEG_FLAG != 0 {
 		recFlags.Integ = true
 	}
+	return
+}
+
+func InitSecContext(claimantCredHandle CredHandle, contextHandle *ContextHandle, targName InternalName, mechType asn1.ObjectIdentifier, reqFlags Flags, lifetimeReq uint32, chanBindings *ChannelBindings, inputToken []byte) (majorStatus, minorStatus uint32, mechTypeRec asn1.ObjectIdentifier, outputToken []byte, recFlags Flags, transState, protReadyState bool, lifetimeRec uint32) {
+	handle := C.gss_cred_id_t(claimantCredHandle)
+	ctx := C.gss_ctx_id_t(*contextHandle)
+	name := C.gss_name_t(targName)
+	desired := oidToCOid(mechType)
+	flags := flagsToInt(reqFlags)
+	lifetime := C.OM_uint32(lifetimeReq)
+	bindings := bindingsToCBindings(chanBindings)
+	var major, minor C.OM_uint32
+	var itoken, otoken C.gss_buffer_desc
+	var actual C.gss_OID
+
+	if inputToken != nil {
+		itoken = bytesToBuffer(inputToken)
+	}
+
+	major = C.gss_init_sec_context(&minor, handle, &ctx, name, desired, flags, lifetime, bindings, &itoken, &actual, &otoken, &flags, &lifetime)
+	C.free_oid(desired)
+
+	*contextHandle = ContextHandle(ctx)
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	if actual != nil {
+		mechTypeRec = coidToOid(*actual)
+		major = C.gss_release_oid(&minor, &actual)
+	}
+	if otoken.length > 0 {
+		outputToken = bufferToBytes(otoken)
+		major = C.gss_release_buffer(&minor, &otoken)
+	}
+	recFlags = flagsToFlags(flags)
 	if flags&C.GSS_C_TRANS_FLAG != 0 {
 		transState = true
 	}
@@ -689,27 +699,7 @@ func AcceptSecContext(acceptorCredHandle CredHandle, contextHandle *ContextHandl
 		mechType = coidToOid(*actual)
 		major = C.gss_release_oid(&minor, &actual)
 	}
-	if flags&C.GSS_C_DELEG_FLAG != 0 {
-		recFlags.Deleg = true
-	}
-	if flags&C.GSS_C_MUTUAL_FLAG != 0 {
-		recFlags.Mutual = true
-	}
-	if flags&C.GSS_C_REPLAY_FLAG != 0 {
-		recFlags.Replay = true
-	}
-	if flags&C.GSS_C_SEQUENCE_FLAG != 0 {
-		recFlags.Sequence = true
-	}
-	if flags&C.GSS_C_ANON_FLAG != 0 {
-		recFlags.Anon = true
-	}
-	if flags&C.GSS_C_CONF_FLAG != 0 {
-		recFlags.Conf = true
-	}
-	if flags&C.GSS_C_INTEG_FLAG != 0 {
-		recFlags.Integ = true
-	}
+	recFlags = flagsToFlags(flags)
 	if flags&C.GSS_C_TRANS_FLAG != 0 {
 		transState = true
 	}
@@ -769,12 +759,30 @@ func ContextTime(contextHandle ContextHandle) (majorStatus, minorStatus, lifetim
 	return
 }
 
-func InquireContext(contextHandle ContextHandle) (majorStatus, minorStatus uint32, srcName, targName InternalName, lifetimeRec uint32, mechType asn1.ObjectIdentifier, delegState, mutualState, replayDetState, sequenceState, anonState, transState, protReadyState, confAvail, integAvail, locallyInitiated, open bool) {
+func OidToStr(oid asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, text string) {
+	id := oidToCOid(oid)
+	var major, minor C.OM_uint32
+	var s C.gss_buffer_desc
+
+	major = C.gss_oid_to_str(&minor, id, &s)
+	C.free_oid(id)
+
+	majorStatus = uint32(major)
+	minorStatus = uint32(minor)
+	if s.length > 0 {
+		text = C.GoStringN((*C.char)(s.value), C.int(s.length))
+		major = C.gss_release_buffer(&minor, &s)
+	}
+	return
+}
+
+func InquireContext(contextHandle ContextHandle) (majorStatus, minorStatus uint32, srcName, targName InternalName, lifetimeRec uint32, mechType asn1.ObjectIdentifier, recFlags Flags,  transState, protReadyState, locallyInitiated, open bool) {
 	handle := C.gss_ctx_id_t(contextHandle)
-	var major, minor, lifetime, flags C.OM_uint32
+	var major, minor, lifetime C.OM_uint32
 	var sname, tname C.gss_name_t
 	var mech C.gss_OID
 	var localinit, opened C.int
+	var flags C.OM_uint32
 
 	major = C.gss_inquire_context(&minor, handle, &sname, &tname, &lifetime, &mech, &flags, &localinit, &opened)
 
@@ -785,7 +793,14 @@ func InquireContext(contextHandle ContextHandle) (majorStatus, minorStatus uint3
 	lifetimeRec = uint32(lifetime)
 	if mech != nil {
 		mechType = coidToOid(*mech)
-		major = C.gss_release_oid(&minor, &mech)
+		/* mech is read-only, so don't free it */
+	}
+	recFlags = flagsToFlags(flags)
+	if flags&C.GSS_C_TRANS_FLAG != 0 {
+		transState = true
+	}
+	if flags&C.GSS_C_PROT_READY_FLAG != 0 {
+		protReadyState = true
 	}
 	locallyInitiated = (localinit != 0)
 	open = (opened != 0)
