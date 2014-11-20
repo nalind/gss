@@ -69,10 +69,12 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		if pmech != nil || spnego {
 			mechSet = make([]asn1.ObjectIdentifier, 1)
 			if spnego {
-				mechSet[0] = gss.C_MA_MECH_NEGO
+				mechSet[0] = parseOid("1.3.6.1.5.5.2")
 			} else {
 				mechSet[0] = *pmech
 			}
+		} else {
+			mechSet = nil
 		}
 
 		/* Acquire the creds. */
@@ -95,14 +97,14 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 	if spnego {
 		if pmech != nil {
 			mechSet := make([]asn1.ObjectIdentifier, 1)
-			mechSet[0] = mech
+			mechSet[0] = *pmech
 			major, minor = gss.SetNegMechs(cred, mechSet)
 			if major != gss.S_COMPLETE {
 				misc.DisplayError("setting negotiate mechs", major, minor, nil)
 				return
 			}
 		}
-		mech = gss.C_MA_MECH_NEGO
+		mech = parseOid("1.3.6.1.5.5.2")
 	} else {
 		if pmech != nil {
 			mech = *pmech
@@ -121,7 +123,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		flags = gss.Flags{Deleg: delegate, Sequence: seq, Replay: !noreplay, Conf: !noenc, Integ: !nomic, Mutual: !nomutual}
 		for true {
 			/* Start/continue. */
-			major, minor, mech, token, flags, _, _, _ = gss.InitSecContext(cred, &ctx, name, mech, flags, 0, nil, token)
+			major, minor, _, token, flags, _, _, _ = gss.InitSecContext(cred, &ctx, name, mech, flags, 0, nil, token)
 			if major != gss.S_COMPLETE && major != gss.S_CONTINUE_NEEDED {
 				misc.DisplayError("initializing security context", major, minor, &mech)
 				gss.DeleteSecContext(ctx)
@@ -198,12 +200,12 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 			return
 		}
 		fmt.Printf("Mechanism %s supports %d names\n", mech, len(mechs))
-		for i, nametype := range(mechs) {
+		for i, nametype := range mechs {
 			major, minor, oid := gss.OidToStr(nametype)
 			if major != gss.S_COMPLETE {
 				misc.DisplayError("converting OID to string", major, minor, &mech)
 			} else {
-				fmt.Printf("%3d: %s (%s)\n", i, oid, nametype)
+				fmt.Printf("%3d: %s\n", i, oid)
 			}
 		}
 	}
