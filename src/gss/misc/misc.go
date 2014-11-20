@@ -7,6 +7,18 @@ import "os"
 import "encoding/binary"
 import "encoding/asn1"
 
+const (
+	TOKEN_NOOP    byte = (1 << 0)
+	TOKEN_CONTEXT byte = (1 << 1)
+	TOKEN_DATA    byte = (1 << 2)
+	TOKEN_MIC     byte = (1 << 3)
+
+	TOKEN_CONTEXT_NEXT byte = (1 << 4)
+	TOKEN_WRAPPED      byte = (1 << 5)
+	TOKEN_ENCRYPTED    byte = (1 << 6)
+	TOKEN_SEND_MIC     byte = (1 << 7)
+)
+
 func DisplayError(when string, major, minor uint32, mech *asn1.ObjectIdentifier) {
 	fmt.Print(gss.DisplayStatus(major, gss.C_GSS_CODE, nil))
 	fmt.Printf(" ")

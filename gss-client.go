@@ -12,17 +12,6 @@ import "strings"
 import "encoding/asn1"
 
 func connectOnce(host string, port int, service string, mcount int, quiet bool, user, pass *string, plain []byte, v1, spnego bool, pmech *asn1.ObjectIdentifier, delegate, seq, noreplay, nomutual, noauth, nowrap, noenc, nomic bool) {
-	const (
-		TOKEN_NOOP    byte = (1 << 0)
-		TOKEN_CONTEXT byte = (1 << 1)
-		TOKEN_DATA    byte = (1 << 2)
-		TOKEN_MIC     byte = (1 << 3)
-
-		TOKEN_CONTEXT_NEXT byte = (1 << 4)
-		TOKEN_WRAPPED      byte = (1 << 5)
-		TOKEN_ENCRYPTED    byte = (1 << 6)
-		TOKEN_SEND_MIC     byte = (1 << 7)
-	)
 	var ctx gss.ContextHandle
 	var cred gss.CredHandle
 	var mech asn1.ObjectIdentifier
@@ -114,11 +103,11 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 	}
 
 	if !v1 {
-		misc.SendToken(conn, TOKEN_NOOP|TOKEN_CONTEXT_NEXT, nil)
+		misc.SendToken(conn, misc.TOKEN_NOOP|misc.TOKEN_CONTEXT_NEXT, nil)
 	}
 
 	if noauth {
-		misc.SendToken(conn, TOKEN_NOOP, nil)
+		misc.SendToken(conn, misc.TOKEN_NOOP, nil)
 	} else {
 		flags = gss.Flags{Deleg: delegate, Sequence: seq, Replay: !noreplay, Conf: !noenc, Integ: !nomic, Mutual: !nomutual}
 		for true {
@@ -135,7 +124,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 					fmt.Printf("Sending init_sec_context token (%d bytes)...", len(token))
 				}
 				if v1 {
-					tag = TOKEN_CONTEXT
+					tag = misc.TOKEN_CONTEXT
 				} else {
 					tag = 0
 				}
@@ -228,15 +217,15 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 			fmt.Printf("Warning!  Message not encrypted.\n")
 		}
 
-		tag = TOKEN_DATA
+		tag = misc.TOKEN_DATA
 		if !nowrap {
-			tag |= TOKEN_WRAPPED
+			tag |= misc.TOKEN_WRAPPED
 		}
 		if !noenc {
-			tag |= TOKEN_ENCRYPTED
+			tag |= misc.TOKEN_ENCRYPTED
 		}
 		if !nomic {
-			tag |= TOKEN_SEND_MIC
+			tag |= misc.TOKEN_SEND_MIC
 		}
 		if v1 {
 			tag = 0
@@ -264,7 +253,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		}
 	}
 	if !v1 {
-		misc.SendToken(conn, TOKEN_NOOP, nil)
+		misc.SendToken(conn, misc.TOKEN_NOOP, nil)
 	}
 }
 
