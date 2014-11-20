@@ -487,12 +487,11 @@ func credStoreToKVSet(credStore [][2]string) (kvset C.gss_key_value_set_desc) {
 func AcquireCred(desiredName InternalName, lifetimeReq uint32, desiredMechs []asn1.ObjectIdentifier, credUsage uint32) (majorStatus, minorStatus uint32, outputCredHandle CredHandle, actualMechs []asn1.ObjectIdentifier, lifetimeRec uint32) {
 	name := C.gss_name_t(desiredName)
 	lifetime := C.OM_uint32(lifetimeReq)
+	desired := oidsToCOidSet(desiredMechs)
 	usage := C.gss_cred_usage_t(credUsage)
 	var major, minor C.OM_uint32
-	var desired, actual C.gss_OID_set
+	var actual C.gss_OID_set
 	var handle C.gss_cred_id_t
-
-	desired = oidsToCOidSet(desiredMechs)
 
 	major = C.gss_acquire_cred(&minor, name, lifetime, desired, usage, &handle, &actual, &lifetime)
 	C.free_oid_set(desired)
@@ -659,7 +658,7 @@ func InitSecContext(claimantCredHandle CredHandle, contextHandle *ContextHandle,
 	minorStatus = uint32(minor)
 	if actual != nil {
 		mechTypeRec = coidToOid(*actual)
-		major = C.gss_release_oid(&minor, &actual)
+		/* actual is read-only, so don't free it */
 	}
 	if otoken.length > 0 {
 		outputToken = bufferToBytes(otoken)
@@ -697,7 +696,7 @@ func AcceptSecContext(acceptorCredHandle CredHandle, contextHandle *ContextHandl
 	srcName = InternalName(name)
 	if actual != nil {
 		mechType = coidToOid(*actual)
-		major = C.gss_release_oid(&minor, &actual)
+		/* actual is read-only, so don't free it */
 	}
 	recFlags = flagsToFlags(flags)
 	if flags&C.GSS_C_TRANS_FLAG != 0 {
@@ -995,7 +994,7 @@ func DisplayName(name InternalName) (majorStatus, minorStatus uint32, nameString
 	}
 	if ntype != nil {
 		nameType = coidToOid(*ntype)
-		major = C.gss_release_oid(&minor, &ntype)
+		/* nameType is read-only, so don't free it */
 	}
 	return
 }
