@@ -31,9 +31,12 @@ func DisplayError(when string, major, minor uint32, mech *asn1.ObjectIdentifier)
 	}
 }
 
-func DisplayFlags(flags gss.Flags) {
+func DisplayFlags(flags gss.Flags, complete bool) {
 	if flags.Deleg {
 		fmt.Printf("context flag: GSS_C_DELEG_FLAG\n")
+	}
+	if flags.DelegPolicy {
+		fmt.Printf("context flag: GSS_C_DELEG_POLICY_FLAG\n")
 	}
 	if flags.Mutual {
 		fmt.Printf("context flag: GSS_C_MUTUAL_FLAG\n")
@@ -44,11 +47,22 @@ func DisplayFlags(flags gss.Flags) {
 	if flags.Sequence {
 		fmt.Printf("context flag: GSS_C_SEQUENCE_FLAG\n")
 	}
+	if flags.Anon {
+		fmt.Printf("context flag: GSS_C_ANON_FLAG\n")
+	}
 	if flags.Conf {
-		fmt.Printf("context flag: GSS_C_CONF_FLAG\n")
+		fmt.Printf("context flag: GSS_C_CONF_FLAG \n")
 	}
 	if flags.Integ {
-		fmt.Printf("context flag: GSS_C_INTEG_FLAG\n")
+		fmt.Printf("context flag: GSS_C_INTEG_FLAG \n")
+	}
+	if complete {
+		if flags.Trans {
+			fmt.Printf("context flag: GSS_C_TRANS_FLAG \n")
+		}
+		if flags.ProtReady {
+			fmt.Printf("context flag: GSS_C_PROT_READY_FLAG \n")
+		}
 	}
 }
 
@@ -68,7 +82,11 @@ func RecvToken(conn net.Conn) (tag byte, token []byte) {
 	var tlen uint32
 	tmp := make([]byte, 1)
 
-	_, err := conn.Read(tmp)
+	n, err := conn.Read(tmp)
+	if n == 0 {
+		fmt.Printf("reading token flags: 0 bytes read")
+		return
+	}
 	if err != nil {
 		fmt.Printf("Error reading flag: %s.\n", err)
 		return

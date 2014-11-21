@@ -71,6 +71,7 @@ import "C"
 import "unsafe"
 import "encoding/asn1"
 import "fmt"
+import "bytes"
 
 const (
 	C_DCE_STYLE           = C.GSS_C_DCE_STYLE
@@ -252,7 +253,7 @@ type ChannelBindings struct {
 }
 
 type Flags struct {
-	Deleg, DelegPolicy, Mutual, Replay, Sequence, Anon, Conf, Integ bool
+	Deleg, DelegPolicy, Mutual, Replay, Sequence, Anon, Conf, Integ, Trans, ProtReady bool
 }
 
 type IOV struct {
@@ -603,6 +604,12 @@ func flagsToInt(flags Flags) (recFlags C.OM_uint32) {
 	if flags.Integ {
 		recFlags |= C.GSS_C_INTEG_FLAG
 	}
+	if flags.Trans {
+		recFlags |= C.GSS_C_TRANS_FLAG
+	}
+	if flags.ProtReady {
+		recFlags |= C.GSS_C_PROT_READY_FLAG
+	}
 	return
 }
 
@@ -631,7 +638,17 @@ func flagsToFlags(flags C.OM_uint32) (recFlags Flags) {
 	if flags&C.GSS_C_INTEG_FLAG != 0 {
 		recFlags.Integ = true
 	}
+	if flags&C.GSS_C_TRANS_FLAG != 0 {
+		recFlags.Trans = true
+	}
+	if flags&C.GSS_C_PROT_READY_FLAG != 0 {
+		recFlags.ProtReady = true
+	}
 	return
+}
+
+func FlagsToRaw(flags Flags) uint32 {
+	return uint32(flagsToInt(flags))
 }
 
 func InitSecContext(claimantCredHandle CredHandle, contextHandle *ContextHandle, targName InternalName, mechType asn1.ObjectIdentifier, reqFlags Flags, lifetimeReq uint32, chanBindings *ChannelBindings, inputToken []byte) (majorStatus, minorStatus uint32, mechTypeRec asn1.ObjectIdentifier, outputToken []byte, recFlags Flags, transState, protReadyState bool, lifetimeRec uint32) {
@@ -769,7 +786,12 @@ func OidToStr(oid asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, text 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
 	if s.length > 0 {
-		text = C.GoStringN((*C.char)(s.value), C.int(s.length))
+		tmp := bufferToBytes(s)
+		if len(tmp) > 0 && tmp[len(tmp) - 1] == 0 {
+			tmp = tmp[0:len(tmp) - 1]
+		}
+		buf := bytes.NewBuffer(tmp)
+		text = buf.String()
 		major = C.gss_release_buffer(&minor, &s)
 	}
 	return

@@ -119,12 +119,12 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 			/* If we have an output token, we need to send it. */
 			if len(token) > 0 {
 				if !quiet {
-					fmt.Printf("Sending init_sec_context token (%d bytes)...", len(token))
+					fmt.Printf("Sending init_sec_context token (size=%d)...", len(token))
 				}
 				if v1 {
-					tag = misc.TOKEN_CONTEXT
-				} else {
 					tag = 0
+				} else {
+					tag = misc.TOKEN_CONTEXT
 				}
 				misc.SendToken(conn, tag, token)
 			}
@@ -135,30 +135,34 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 				}
 				tag, token = misc.RecvToken(conn)
 				if !quiet {
-					fmt.Printf("\nReceived new input token (%d bytes).\n", len(token))
+					fmt.Printf("\n");
 				}
 				if len(token) == 0 {
-					fmt.Printf("server closed connection.\n")
+					if !quiet {
+						fmt.Printf("server closed connection.\n")
+					}
 					defer gss.DeleteSecContext(ctx)
 					break
 				}
 			} else {
 				/* COMPLETE means we're done, everything succeeded. */
 				if !quiet {
-					fmt.Printf("Done authenticating.\n")
+					fmt.Printf("\n");
 				}
 				defer gss.DeleteSecContext(ctx)
 				break
 			}
 		}
 		if major != gss.S_COMPLETE {
-			fmt.Printf("Error authenticating to server: %x/%x.\n", major, minor)
+			fmt.Printf("Error authenticating to server: %08x/%08x.\n", major, minor)
 			return
 		}
-		misc.DisplayFlags(flags)
+		if !quiet {
+			misc.DisplayFlags(flags, false)
+		}
 
 		/* Describe the context. */
-		major, minor, sname, tname, lifetime, mech, flags, _, _, local, open := gss.InquireContext(ctx)
+		major, minor, sname, tname, lifetime, mech, flags2, _, _, local, open := gss.InquireContext(ctx)
 		if major != gss.S_COMPLETE {
 			misc.DisplayError("inquiring context", major, minor, &mech)
 			return
@@ -183,21 +187,36 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		} else {
 			openstate = "closed"
 		}
-		fmt.Printf("\"%s\" to \"%s\", lifetime %d, %s, %s\n", srcname, targname, lifetime, localstate, openstate)
-		misc.DisplayFlags(flags)
-		fmt.Printf("Name type of source name is %s.\n", srcnametype)
+		if !quiet {
+			fmt.Printf("\"%s\" to \"%s\", lifetime %d, flags %x, %s, %s\n", srcname, targname, lifetime, gss.FlagsToRaw(flags2), localstate, openstate)
+		}
+		major, minor, oid := gss.OidToStr(srcnametype)
+		if major != gss.S_COMPLETE {
+			oid = srcnametype.String()
+		}
+		if !quiet {
+			fmt.Printf("Name type of source name is %s.\n", oid)
+		}
 		major, minor, mechs := gss.InquireNamesForMech(mech)
 		if major != gss.S_COMPLETE {
 			misc.DisplayError("inquiring mech names", major, minor, &mech)
 			return
 		}
-		fmt.Printf("Mechanism %s supports %d names\n", mech, len(mechs))
+		major, minor, oid = gss.OidToStr(mech)
+		if major != gss.S_COMPLETE {
+			oid = mech.String()
+		}
+		if !quiet {
+			fmt.Printf("Mechanism %s supports %d names\n", oid, len(mechs))
+		}
 		for i, nametype := range mechs {
 			major, minor, oid := gss.OidToStr(nametype)
 			if major != gss.S_COMPLETE {
 				misc.DisplayError("converting OID to string", major, minor, &mech)
 			} else {
-				fmt.Printf("%3d: %s\n", i, oid)
+				if !quiet {
+					fmt.Printf("%3d: %s\n", i, oid)
+				}
 			}
 		}
 	}
@@ -215,9 +234,9 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 				misc.DisplayError("wrapping data", major, minor, &mech)
 				return
 			}
-		}
-		if !noenc && !encrypted {
-			fmt.Printf("Warning!  Message not encrypted.\n")
+			if !noenc && !encrypted && !quiet {
+				fmt.Printf("Warning!  Message not encrypted.\n")
+			}
 		}
 
 		tag = misc.TOKEN_DATA
@@ -237,12 +256,16 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		misc.SendToken(conn, tag, wrapped)
 		tag, mictoken := misc.RecvToken(conn)
 		if tag == 0 && len(mictoken) == 0 {
-			fmt.Printf("Server closed connection unexpectedly.\n")
+			if !quiet {
+				fmt.Printf("Server closed connection unexpectedly.\n")
+			}
 			return
 		}
 		if nomic {
 			if bytes.Equal(plain, mictoken) {
-				fmt.Printf("Response differed.\n")
+				if !quiet {
+					fmt.Printf("Response differed.\n")
+				}
 				return
 			}
 			if !quiet {
@@ -291,8 +314,8 @@ func main() {
 	seq := flag.Bool("seq", false, "use sequence number checking")
 	noreplay := flag.Bool("noreplay", false, "disable replay checking")
 	nomutual := flag.Bool("nomutual", false, "perform one-way authentication")
-	user := flag.String("user", "", "user name")
-	pass := flag.String("pass", "", "password")
+	user := flag.String("user", "", "acquire creds as user")
+	pass := flag.String("pass", "", "password for -user user")
 	file := flag.Bool("f", false, "read message from file")
 	v1 := flag.Bool("v1", false, "use version 1 protocol")
 	quiet := flag.Bool("q", false, "quiet")
@@ -310,7 +333,8 @@ func main() {
 	service := flag.Arg(1)
 	msg := flag.Arg(2)
 	if flag.NArg() < 3 {
-		flag.Usage()
+		fmt.Printf("Usage: gss-client [options] host gss-service-name message-or-file\n")
+		flag.PrintDefaults()
 		os.Exit(1)
 	}
 
@@ -352,6 +376,11 @@ func main() {
 	}
 	if len(*pass) == 0 {
 		pass = nil
+	}
+	if *noauth {
+		*nowrap = true
+		*noenc = true
+		*nomic = true
 	}
 
 	for c := 0; c < *ccount; c++ {

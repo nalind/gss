@@ -170,7 +170,8 @@ func main() {
 
 	flag.Parse()
 	if flag.NArg() < 1 {
-		flag.Usage()
+		fmt.Printf("Usage: gss-server [options] gss-service-name\n")
+		flag.PrintDefaults()
 		os.Exit(1)
 	}
 	service := flag.Arg(0)
