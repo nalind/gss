@@ -3,7 +3,6 @@ package misc
 import "fmt"
 import "gss"
 import "net"
-import "os"
 import "encoding/binary"
 import "encoding/asn1"
 
@@ -60,7 +59,9 @@ func SendToken(conn net.Conn, tag byte, token []byte) {
 		binary.Write(conn, binary.BigEndian, tag)
 	}
 	binary.Write(conn, binary.BigEndian, tlen)
-	conn.Write(token)
+	if tlen > 0 {
+		conn.Write(token)
+	}
 }
 
 func RecvToken(conn net.Conn) (tag byte, token []byte) {
@@ -69,30 +70,32 @@ func RecvToken(conn net.Conn) (tag byte, token []byte) {
 
 	_, err := conn.Read(tmp)
 	if err != nil {
-		fmt.Printf("Error reading flag from server: %s.\n", err)
-		os.Exit(2)
+		fmt.Printf("Error reading flag: %s.\n", err)
+		return
 	}
 	tag = tmp[0]
 	if tag != 0 {
 		err = binary.Read(conn, binary.BigEndian, &tlen)
 		if err != nil {
-			fmt.Printf("Error reading tags from server: %s.\n", err)
-			os.Exit(2)
+			fmt.Printf("Error reading tag: %s.\n", err)
+			return
 		}
 	} else {
 		tags := make([]byte, 3)
 		_, err := conn.Read(tags)
 		if err != nil {
-			fmt.Printf("Error reading length from server: %s.\n", err)
-			os.Exit(2)
+			fmt.Printf("Error reading length: %s.\n", err)
+			return
 		}
 		tlen = uint32((tag << 24) | (tags[0] << 16) | (tags[1] << 8) | tags[2])
 	}
-	token = make([]byte, tlen)
-	_, err = conn.Read(token)
-	if err != nil {
-		fmt.Printf("Error reading from server: %s.\n", err)
-		os.Exit(2)
+	if tlen > 0 {
+		token = make([]byte, tlen)
+		_, err = conn.Read(token)
+		if err != nil {
+			fmt.Printf("Error reading: %s.\n", err)
+			return
+		}
 	}
 	return
 }

@@ -36,25 +36,25 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		sname = service + "@" + host
 	}
 	major, minor, name := gss.ImportName(sname, gss.C_NT_HOSTBASED_SERVICE)
-	if major != 0 {
+	if major != gss.S_COMPLETE {
 		misc.DisplayError("importing remote service name", major, minor, nil)
 		return
 	}
 	defer gss.ReleaseName(name)
 
-	/* If we were passed a user name and/or password, acquire some initiator creds. */
+	/* If we were passed a user name and maybe a password, acquire some initiator creds. */
 	if user != nil {
 		var mechSet []asn1.ObjectIdentifier
 
 		/* Parse the user name. */
 		major, minor, username := gss.ImportName(*user, gss.C_NT_USER_NAME)
-		if major != 0 {
+		if major != gss.S_COMPLETE {
 			misc.DisplayError("importing client name", major, minor, nil)
 			return
 		}
 		defer gss.ReleaseName(username)
 
-		/* Set the mechanism OID. */
+		/* Set the mechanism OID for the creds that we want. */
 		if pmech != nil || spnego {
 			mechSet = make([]asn1.ObjectIdentifier, 1)
 			if spnego {
@@ -74,15 +74,14 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		} else {
 			major, minor, cred, _, _ = gss.AcquireCred(username, gss.C_INDEFINITE, mechSet, gss.C_INITIATE)
 		}
-		if major != 0 {
+		if major != gss.S_COMPLETE {
 			misc.DisplayError("acquiring creds", major, minor, &mechSet[0])
 			return
 		}
 		defer gss.ReleaseCred(cred)
 	}
 
-	/* If we're doing SPNEGO, then a passed-in mechanism OID is the one we
-	 * want to negotiate. */
+	/* If we're doing SPNEGO, then a passed-in mechanism OID is the one we want to negotiate. */
 	if spnego {
 		if pmech != nil {
 			mechSet := make([]asn1.ObjectIdentifier, 1)
@@ -102,13 +101,12 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		}
 	}
 
-	if !v1 {
-		misc.SendToken(conn, misc.TOKEN_NOOP|misc.TOKEN_CONTEXT_NEXT, nil)
-	}
-
 	if noauth {
 		misc.SendToken(conn, misc.TOKEN_NOOP, nil)
 	} else {
+		if !v1 {
+			misc.SendToken(conn, misc.TOKEN_NOOP|misc.TOKEN_CONTEXT_NEXT, nil)
+		}
 		flags = gss.Flags{Deleg: delegate, Sequence: seq, Replay: !noreplay, Conf: !noenc, Integ: !nomic, Mutual: !nomutual}
 		for true {
 			/* Start/continue. */
@@ -138,6 +136,11 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 				tag, token = misc.RecvToken(conn)
 				if !quiet {
 					fmt.Printf("\nReceived new input token (%d bytes).\n", len(token))
+				}
+				if len(token) == 0 {
+					fmt.Printf("server closed connection.\n")
+					defer gss.DeleteSecContext(ctx)
+					break
 				}
 			} else {
 				/* COMPLETE means we're done, everything succeeded. */
@@ -232,7 +235,11 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		}
 
 		misc.SendToken(conn, tag, wrapped)
-		_, mictoken := misc.RecvToken(conn)
+		tag, mictoken := misc.RecvToken(conn)
+		if tag == 0 && len(mictoken) == 0 {
+			fmt.Printf("Server closed connection unexpectedly.\n")
+			return
+		}
 		if nomic {
 			if bytes.Equal(plain, mictoken) {
 				fmt.Printf("Response differed.\n")

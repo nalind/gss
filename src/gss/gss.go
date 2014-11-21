@@ -1194,6 +1194,15 @@ func Krb5ExtractAuthzDataFromSecContext(contextHandle ContextHandle, adType int)
 	return
 }
 
+func Krb5RegisterAcceptorIdentity(identity string) uint32 {
+	id := C.CString(identity)
+	var ret C.OM_uint32
+
+	ret = C.krb5_gss_register_acceptor_identity(id)
+	C.free(unsafe.Pointer(id))
+	return uint32(ret)
+}
+
 func PNameToUid(name InternalName, nmech asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, uid string) {
 	iname := C.gss_name_t(name)
 	mech := oidToCOid(nmech)
