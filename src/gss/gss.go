@@ -378,6 +378,10 @@ func coidToOid(coid C.gss_OID_desc) (oid asn1.ObjectIdentifier) {
  * without the tag and length, which is how the C library expects them to be
  * structured. */
 func oidToCOid(oid asn1.ObjectIdentifier) (coid C.gss_OID) {
+	if oid == nil {
+		return
+	}
+
 	b, _ := asn1.Marshal(oid)
 	if b == nil {
 		return
@@ -968,7 +972,12 @@ func DisplayStatus(statusValue uint32, statusType int, mechType asn1.ObjectIdent
 	minorStatus = uint32(minor)
 	messageContext = uint32(mctx)
 	if status.length > 0 {
-		statusString = C.GoStringN((*C.char)(status.value), C.int(status.length))
+		tmp := bufferToBytes(status)
+		if len(tmp) > 0 && tmp[len(tmp) - 1] == 0 {
+			tmp = tmp[0:len(tmp) - 1]
+		}
+		buf := bytes.NewBuffer(tmp)
+		statusString = buf.String()
 		major = C.gss_release_buffer(&minor, &status)
 	}
 	return
@@ -1011,7 +1020,12 @@ func DisplayName(name InternalName) (majorStatus, minorStatus uint32, nameString
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
 	if dname.length > 0 {
-		nameString = C.GoStringN((*C.char)(dname.value), C.int(dname.length))
+		tmp := bufferToBytes(dname)
+		if len(tmp) > 0 && tmp[len(tmp) - 1] == 0 {
+			tmp = tmp[0:len(tmp) - 1]
+		}
+		buf := bytes.NewBuffer(tmp)
+		nameString = buf.String()
 		major = C.gss_release_buffer(&minor, &dname)
 	}
 	if ntype != nil {
@@ -1243,7 +1257,7 @@ func PNameToUid(name InternalName, nmech asn1.ObjectIdentifier) (majorStatus, mi
 	return
 }
 
-func Localname(name InternalName, mechType asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, localName []byte) {
+func Localname(name InternalName, mechType asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, localName string) {
 	iname := C.gss_name_t(name)
 	mech := oidToCOid(mechType)
 	var major, minor C.OM_uint32
@@ -1255,7 +1269,12 @@ func Localname(name InternalName, mechType asn1.ObjectIdentifier) (majorStatus, 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
 	if lname.length > 0 {
-		localName = bufferToBytes(lname)
+		tmp := bufferToBytes(lname)
+		if len(tmp) > 0 && tmp[len(tmp) - 1] == 0 {
+			tmp = tmp[0:len(tmp) - 1]
+		}
+		buf := bytes.NewBuffer(tmp)
+		localName = buf.String()
 		major = C.gss_release_buffer(&minor, &lname)
 	}
 	return

@@ -158,7 +158,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 			return
 		}
 		if !quiet {
-			misc.DisplayFlags(flags, false)
+			misc.DisplayFlags(flags, false, os.Stdout)
 		}
 
 		/* Describe the context. */

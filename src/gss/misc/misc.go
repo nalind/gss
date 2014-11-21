@@ -3,6 +3,7 @@ package misc
 import "fmt"
 import "gss"
 import "net"
+import "io"
 import "encoding/binary"
 import "encoding/asn1"
 
@@ -31,37 +32,37 @@ func DisplayError(when string, major, minor uint32, mech *asn1.ObjectIdentifier)
 	}
 }
 
-func DisplayFlags(flags gss.Flags, complete bool) {
+func DisplayFlags(flags gss.Flags, complete bool, file io.Writer) {
 	if flags.Deleg {
-		fmt.Printf("context flag: GSS_C_DELEG_FLAG\n")
+		fmt.Fprintf(file, "context flag: GSS_C_DELEG_FLAG\n")
 	}
 	if flags.DelegPolicy {
-		fmt.Printf("context flag: GSS_C_DELEG_POLICY_FLAG\n")
+		fmt.Fprintf(file, "context flag: GSS_C_DELEG_POLICY_FLAG\n")
 	}
 	if flags.Mutual {
-		fmt.Printf("context flag: GSS_C_MUTUAL_FLAG\n")
+		fmt.Fprintf(file, "context flag: GSS_C_MUTUAL_FLAG\n")
 	}
 	if flags.Replay {
-		fmt.Printf("context flag: GSS_C_REPLAY_FLAG\n")
+		fmt.Fprintf(file, "context flag: GSS_C_REPLAY_FLAG\n")
 	}
 	if flags.Sequence {
-		fmt.Printf("context flag: GSS_C_SEQUENCE_FLAG\n")
+		fmt.Fprintf(file, "context flag: GSS_C_SEQUENCE_FLAG\n")
 	}
 	if flags.Anon {
-		fmt.Printf("context flag: GSS_C_ANON_FLAG\n")
+		fmt.Fprintf(file, "context flag: GSS_C_ANON_FLAG\n")
 	}
 	if flags.Conf {
-		fmt.Printf("context flag: GSS_C_CONF_FLAG \n")
+		fmt.Fprintf(file, "context flag: GSS_C_CONF_FLAG \n")
 	}
 	if flags.Integ {
-		fmt.Printf("context flag: GSS_C_INTEG_FLAG \n")
+		fmt.Fprintf(file, "context flag: GSS_C_INTEG_FLAG \n")
 	}
 	if complete {
 		if flags.Trans {
-			fmt.Printf("context flag: GSS_C_TRANS_FLAG \n")
+			fmt.Fprintf(file, "context flag: GSS_C_TRANS_FLAG \n")
 		}
 		if flags.ProtReady {
-			fmt.Printf("context flag: GSS_C_PROT_READY_FLAG \n")
+			fmt.Fprintf(file, "context flag: GSS_C_PROT_READY_FLAG \n")
 		}
 	}
 }

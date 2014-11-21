@@ -1,21 +1,41 @@
 package main
 
+import "bytes"
 import "encoding/asn1"
 import "flag"
 import "fmt"
 import "gss"
 import "gss/misc"
 import "net"
+import "io"
 import "os"
 import "strconv"
 
-func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool) {
+func dump(file io.Writer, data []byte) {
+	var another bool
+
+	for i, b := range(data) {
+		fmt.Fprintf(file, "%02x", b)
+		if (i % 16 == 15) {
+			fmt.Fprintf(file, "\n")
+			another = false
+		} else {
+			fmt.Fprintf(file, " ")
+			another = true
+		}
+	}
+	if another {
+		fmt.Fprintf(file, "\n")
+	}
+}
+
+func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.Writer) {
 	var ctx gss.ContextHandle
 	var dcred gss.CredHandle
 	var cname gss.InternalName
 	var flags gss.Flags
 	var mech asn1.ObjectIdentifier
-	var client string
+	var client, localname string
 	var major, minor uint32
 	var conf bool
 
@@ -27,7 +47,9 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool) {
 		return
 	}
 	if (tag & misc.TOKEN_NOOP) == 0 {
-		fmt.Printf("Expected NOOP token, got %d token instead.\n", tag)
+		if logfile != nil {
+			fmt.Fprintf(logfile, "Expected NOOP token, got %d token instead.\n", tag)
+		}
 		return
 	}
 	if (tag & misc.TOKEN_CONTEXT_NEXT) != 0 {
@@ -37,8 +59,9 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool) {
 			if tag == 0 && len(token) == 0 {
 				break
 			}
-			if verbose {
-				fmt.Printf("Received token (%d bytes):\n", len(token))
+			if verbose && logfile != nil {
+				fmt.Fprintf(logfile, "Received token (%d bytes):\n", len(token))
+				dump(logfile, token)
 			}
 			if tag&misc.TOKEN_CONTEXT == 0 {
 				fmt.Printf("Expected context establishment token, got %d token instead.\n", tag)
@@ -47,18 +70,11 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool) {
 			major, minor, cname, mech, flags, _, _, _, dcred, token = gss.AcceptSecContext(cred, &ctx, nil, token)
 			if len(token) > 0 {
 				/* If we got a new token, send it to the client. */
-				if verbose {
-					fmt.Printf("Sending accept_sec_context token (%d bytes):\n", len(token))
+				if verbose && logfile != nil {
+					fmt.Fprintf(logfile, "Sending accept_sec_context token (%d bytes):\n", len(token))
+					dump(logfile, token)
 				}
 				misc.SendToken(conn, misc.TOKEN_CONTEXT, token)
-			}
-			if cname != nil {
-				major, minor, client, _ = gss.DisplayName(cname)
-				if major != gss.S_COMPLETE {
-					misc.DisplayError("displaying name", major, minor, &mech)
-				}
-				defer gss.ReleaseName(cname)
-				cname = nil
 			}
 			if dcred != nil {
 				defer gss.ReleaseCred(dcred)
@@ -71,25 +87,40 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool) {
 			if major == gss.S_COMPLETE {
 				/* Okay, success. */
 				defer gss.DeleteSecContext(ctx)
+				if verbose && logfile != nil {
+					fmt.Fprintf(logfile, "\n")
+				}
 				break
 			}
 			/* Wait for another context establishment token. */
-			if verbose {
-				fmt.Printf("continue needed...\n")
+			if verbose && logfile != nil {
+				fmt.Fprintf(logfile, "continue needed...\n")
 			}
 		}
 		/* Dig up information about the connection. */
-		misc.DisplayFlags(flags)
+		misc.DisplayFlags(flags, false, logfile)
 		major, minor, oid := gss.OidToStr(mech)
 		if major != gss.S_COMPLETE {
 			misc.DisplayError("converting oid to string", major, minor, &mech)
 		}
-		if verbose {
-			fmt.Printf("Accepted connection using mechanism OID %s.\n", oid)
+		if verbose && logfile != nil {
+			fmt.Fprintf(logfile, "Accepted connection using mechanism OID %s.\n", oid)
 		}
+		/* Figure out the client's mech and local names. */
+		major, minor, client, _ = gss.DisplayName(cname)
+		if major != gss.S_COMPLETE {
+			misc.DisplayError("displaying name", major, minor, &mech)
+		}
+		major, minor, localname = gss.Localname(cname, nil)
+		if major != gss.S_COMPLETE {
+			misc.DisplayError("gss.Localname", major, minor, &mech)
+		} else {
+			fmt.Printf("localname: %s\n", localname)
+		}
+		defer gss.ReleaseName(cname)
 	} else {
-		if verbose {
-			fmt.Printf("Accepted unauthenticated connection.\n")
+		if logfile != nil {
+			fmt.Fprintf(logfile, "Accepted unauthenticated connection.\n")
 		}
 	}
 	/* Start processing message tokens from the client. */
@@ -109,8 +140,8 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool) {
 		}
 		/* Client indicates EOF with another NOOP token. */
 		if tag&misc.TOKEN_NOOP != 0 {
-			if verbose {
-				fmt.Printf("NOOP token.\n")
+			if logfile != nil {
+				fmt.Fprintf(logfile, "NOOP token\n")
 			}
 			break
 		}
@@ -119,13 +150,14 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool) {
 			fmt.Printf("Expected data token, got %d token instead.\n", tag)
 			break
 		}
-		if verbose {
-			fmt.Printf("Message token (flags=%d).\n", tag)
+		if verbose && logfile != nil {
+			fmt.Fprintf(logfile, "Message token (flags=%d):\n", tag)
+			dump(logfile, token)
 		}
 		/* No context handle means no encryption or signing. */
 		if ctx == nil && (tag&(misc.TOKEN_WRAPPED|misc.TOKEN_ENCRYPTED|misc.TOKEN_SEND_MIC)) != 0 {
-			if verbose {
-				fmt.Printf("Unauthenticated client requested authenticated services!\n")
+			if logfile != nil {
+				fmt.Fprintf(logfile, "Unauthenticated client requested authenticated services!\n")
 			}
 			break
 		}
@@ -142,8 +174,15 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool) {
 			}
 		}
 		/* Log it. */
-		if verbose {
-			fmt.Printf("Received message:\n")
+		if logfile != nil {
+			fmt.Fprintf(logfile, "Received message: ")
+			if token[0] >= 32 && token[0] < 127 && token[1] >= 32 && token[1] < 127 {
+				buf := bytes.NewBuffer(token)
+				fmt.Fprintf(logfile, "\"%s\"\n", buf)
+			} else {
+				fmt.Fprintf(logfile, "\n")
+				dump(logfile, token)
+			}
 		}
 		/* Reply. */
 		if tag&misc.TOKEN_SEND_MIC != 0 {
@@ -165,8 +204,11 @@ func main() {
 	port := flag.Int("port", 4444, "port")
 	verbose := flag.Bool("verbose", false, "verbose")
 	once := flag.Bool("once", false, "single-connection mode")
-	export := flag.Bool("export", false, "export the context")
+	export := flag.Bool("export", false, "export/reimport the context")
 	keytab := flag.String("keytab", "", "keytab location")
+	logfile := flag.String("logfile", "/dev/null", "log file for details")
+	var log *os.File
+	var err error
 
 	flag.Parse()
 	if flag.NArg() < 1 {
@@ -175,6 +217,15 @@ func main() {
 		os.Exit(1)
 	}
 	service := flag.Arg(0)
+
+	/* Open the log file. */
+	if logfile != nil {
+		log, err = os.OpenFile(*logfile, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0644)
+		if err != nil {
+			fmt.Printf("Error opening log file \"%s\": %s\n", *logfile, err)
+			return
+		}
+	}
 
 	/* Set up the listener socket. */
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(*port))
@@ -208,6 +259,7 @@ func main() {
 	}
 	defer gss.ReleaseCred(cred)
 
+	fmt.Printf("starting...\n")
 	if *once {
 		/* Service exactly one client. */
 		conn, err := listener.Accept()
@@ -215,7 +267,7 @@ func main() {
 			fmt.Printf("Error accepting client connection: %s\n", err)
 			return
 		}
-		serve(conn, cred, *export, *verbose)
+		serve(conn, cred, *export, *verbose, log)
 	} else {
 		/* Just keep serving clients. */
 		for {
@@ -224,7 +276,7 @@ func main() {
 				fmt.Printf("Error accepting client connection: %s\n", err)
 				continue
 			}
-			go serve(conn, cred, *export, *verbose)
+			go serve(conn, cred, *export, *verbose, log)
 		}
 	}
 	return
