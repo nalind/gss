@@ -206,7 +206,7 @@ func main() {
 	once := flag.Bool("once", false, "single-connection mode")
 	export := flag.Bool("export", false, "export/reimport the context")
 	keytab := flag.String("keytab", "", "keytab location")
-	logfile := flag.String("logfile", "/dev/null", "log file for details")
+	logfile := flag.String("logfile", "/dev/stdout", "log file for details")
 	var log *os.File
 	var err error
 
