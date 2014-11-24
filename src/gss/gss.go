@@ -293,8 +293,8 @@ func buffersToBytes(cdesc C.gss_buffer_set_desc) (b [][]byte) {
 /* bufferToString creates a string using the contents of the passed-in buffer. */
 func bufferToString(cdesc C.gss_buffer_desc) (text string) {
 	b := bufferToBytes(cdesc)
-	if len(b) > 0 && b[len(b) - 1] == 0 {
-		b = b[0:len(b) - 1]
+	if len(b) > 0 && b[len(b)-1] == 0 {
+		b = b[0 : len(b)-1]
 	}
 	buf := bytes.NewBuffer(b)
 	text = buf.String()
@@ -392,9 +392,7 @@ func splitTagAndLength(tlv []byte) (class int, constructed bool, tag, length int
 	return
 }
 
-/* coidToOid produces an asn1.ObjectIdentifier from the library's preferred
- * bytes-and-length representation, which is just the DER encoding without a
- * tag and length. */
+/* coidToOid produces an asn1.ObjectIdentifier from the library's preferred bytes-and-length representation, which is just the DER encoding without a tag and length. */
 func coidToOid(coid C.gss_OID_desc) (oid asn1.ObjectIdentifier) {
 	length := C.int(coid.length)
 	b := C.GoBytes(coid.elements, length)
@@ -404,9 +402,7 @@ func coidToOid(coid C.gss_OID_desc) (oid asn1.ObjectIdentifier) {
 	return
 }
 
-/* oidToCOid converts an asn1.ObjectIdentifier into an array of encoded bytes
- * without the tag and length, which is how the C library expects them to be
- * structured. */
+/* oidToCOid converts an asn1.ObjectIdentifier into an array of encoded bytes without the tag and length, which is how the C library expects them to be structured. */
 func oidToCOid(oid asn1.ObjectIdentifier) (coid C.gss_OID) {
 	if oid == nil {
 		return
@@ -434,9 +430,7 @@ func oidToCOid(oid asn1.ObjectIdentifier) (coid C.gss_OID) {
 	return
 }
 
-/* oidsToCOidSet converts an array of asn1.ObjectIdentifier items into an array
- * of arrays of encoded bytes-and-lengths, which is how the C library expects
- * them to be structured. */
+/* oidsToCOidSet converts an array of asn1.ObjectIdentifier items into an array of arrays of encoded bytes-and-lengths, which is how the C library expects them to be structured. */
 func oidsToCOidSet(oidSet []asn1.ObjectIdentifier) (coids C.gss_OID_set) {
 	var major, minor C.OM_uint32
 	if oidSet == nil {
@@ -463,8 +457,7 @@ func oidsToCOidSet(oidSet []asn1.ObjectIdentifier) (coids C.gss_OID_set) {
 	return
 }
 
-/* coidSetToOids produces an array of asn1.ObjectIdentifier items from the
- * library's preferred array-of-bytes-and-lengths representation. */
+/* coidSetToOids produces an array of asn1.ObjectIdentifier items from the library's preferred array-of-bytes-and-lengths representation. */
 func coidSetToOids(coids *C.gss_OID_set_desc) (oidSet []asn1.ObjectIdentifier) {
 	if coids == nil {
 		return nil
@@ -826,7 +819,7 @@ func OidToStr(oid asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, text 
 	return
 }
 
-func InquireContext(contextHandle ContextHandle) (majorStatus, minorStatus uint32, srcName, targName InternalName, lifetimeRec uint32, mechType asn1.ObjectIdentifier, recFlags Flags,  transState, protReadyState, locallyInitiated, open bool) {
+func InquireContext(contextHandle ContextHandle) (majorStatus, minorStatus uint32, srcName, targName InternalName, lifetimeRec uint32, mechType asn1.ObjectIdentifier, recFlags Flags, transState, protReadyState, locallyInitiated, open bool) {
 	handle := C.gss_ctx_id_t(contextHandle)
 	var major, minor, lifetime C.OM_uint32
 	var sname, tname C.gss_name_t

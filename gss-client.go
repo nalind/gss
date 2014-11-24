@@ -135,7 +135,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 				}
 				tag, token = misc.RecvToken(conn)
 				if !quiet {
-					fmt.Printf("\n");
+					fmt.Printf("\n")
 				}
 				if len(token) == 0 {
 					if !quiet {
@@ -147,7 +147,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 			} else {
 				/* COMPLETE means we're done, everything succeeded. */
 				if !quiet {
-					fmt.Printf("\n");
+					fmt.Printf("\n")
 				}
 				defer gss.DeleteSecContext(ctx)
 				break

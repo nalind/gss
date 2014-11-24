@@ -19,6 +19,7 @@ const (
 	TOKEN_SEND_MIC     byte = (1 << 7)
 )
 
+/* DisplayError prints error messages associated with the passed-in major and minor error codes. */
 func DisplayError(when string, major, minor uint32, mech *asn1.ObjectIdentifier) {
 	fmt.Print(gss.DisplayStatus(major, gss.C_GSS_CODE, nil))
 	fmt.Printf(" ")
@@ -32,6 +33,7 @@ func DisplayError(when string, major, minor uint32, mech *asn1.ObjectIdentifier)
 	}
 }
 
+/* DisplayFlags logs the contents of the passed-in flags. */
 func DisplayFlags(flags gss.Flags, complete bool, file io.Writer) {
 	if flags.Deleg {
 		fmt.Fprintf(file, "context flag: GSS_C_DELEG_FLAG\n")
@@ -67,6 +69,7 @@ func DisplayFlags(flags gss.Flags, complete bool, file io.Writer) {
 	}
 }
 
+/* SendToken sends a token from the sample GSS client to the sample GSS server, or vice-versa. */
 func SendToken(conn net.Conn, tag byte, token []byte) {
 	tlen := uint32(len(token))
 
@@ -79,6 +82,7 @@ func SendToken(conn net.Conn, tag byte, token []byte) {
 	}
 }
 
+/* RecvToken reads a token sent by SendToken over a newtork connection. */
 func RecvToken(conn net.Conn) (tag byte, token []byte) {
 	var tlen uint32
 	tmp := make([]byte, 1)

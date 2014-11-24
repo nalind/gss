@@ -14,9 +14,9 @@ import "strconv"
 func dump(file io.Writer, data []byte) {
 	var another bool
 
-	for i, b := range(data) {
+	for i, b := range data {
 		fmt.Fprintf(file, "%02x", b)
-		if (i % 16 == 15) {
+		if i%16 == 15 {
 			fmt.Fprintf(file, "\n")
 			another = false
 		} else {
@@ -118,7 +118,7 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 				} else {
 					fmt.Fprintf(logfile, "Name is not specific to mechanism.\n")
 				}
-				for _, attr := range(attrs) {
+				for _, attr := range attrs {
 					more := -1
 					for more != 0 {
 						major, minor, authenticated, complete, value, displayValue := gss.GetNameAttribute(cname, attr, &more)
@@ -255,7 +255,7 @@ func main() {
 
 	/* Open the log file. */
 	if logfile != nil {
-		log, err = os.OpenFile(*logfile, os.O_CREATE | os.O_WRONLY | os.O_APPEND, 0644)
+		log, err = os.OpenFile(*logfile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			fmt.Printf("Error opening log file \"%s\": %s\n", *logfile, err)
 			return
