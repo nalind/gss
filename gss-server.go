@@ -86,7 +86,6 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 			}
 			if major == gss.S_COMPLETE {
 				/* Okay, success. */
-				defer gss.DeleteSecContext(ctx)
 				if verbose && logfile != nil {
 					fmt.Fprintf(logfile, "\n")
 				}
@@ -97,6 +96,8 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 				fmt.Fprintf(logfile, "continue needed...\n")
 			}
 		}
+		/* Make sure the context is cleaned up eventually. */
+		defer gss.DeleteSecContext(ctx)
 		/* Dig up information about the connection. */
 		misc.DisplayFlags(flags, false, logfile)
 		major, minor, oid := gss.OidToStr(mech)
@@ -106,7 +107,41 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 		if verbose && logfile != nil {
 			fmt.Fprintf(logfile, "Accepted connection using mechanism OID %s.\n", oid)
 		}
-		/* Figure out the client's mech and local names. */
+		/* Figure out the client's attributes and displayable and local names. */
+		major, minor, isMN, namemech, attrs := gss.InquireName(cname)
+		if major != gss.S_COMPLETE {
+			misc.DisplayError("inquiring name", major, minor, &mech)
+		} else {
+			if verbose && logfile != nil {
+				if isMN {
+					fmt.Fprintf(logfile, "Name is specific to mechanism %s.\n", namemech)
+				} else {
+					fmt.Fprintf(logfile, "Name is not specific to mechanism.\n")
+				}
+				for _, attr := range(attrs) {
+					more := -1
+					for more != 0 {
+						major, minor, authenticated, complete, value, displayValue := gss.GetNameAttribute(cname, attr, &more)
+						if major != gss.S_COMPLETE {
+							misc.DisplayError("getting name attribute", major, minor, &mech)
+						} else {
+							fmt.Fprintf(logfile, "Attribute %s \"%s\"", attr, displayValue)
+							if authenticated {
+								fmt.Fprintf(logfile, ", authenticated")
+							}
+							if complete {
+								fmt.Fprintf(logfile, ", complete")
+							}
+							if more != 0 {
+								fmt.Fprintf(logfile, " (more)")
+							}
+							fmt.Fprintf(logfile, "\n")
+							dump(logfile, value)
+						}
+					}
+				}
+			}
+		}
 		major, minor, client, _ = gss.DisplayName(cname)
 		if major != gss.S_COMPLETE {
 			misc.DisplayError("displaying name", major, minor, &mech)
