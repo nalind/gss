@@ -260,8 +260,7 @@ type IOV struct {
 	data []byte
 }
 
-/* bytesToBuffer populates a gss_buffer_t with a borrowed reference to the
- * contents of the slice. */
+/* bytesToBuffer populates a gss_buffer_t with a borrowed reference to the contents of the slice. */
 func bytesToBuffer(data []byte) (cdesc C.gss_buffer_desc) {
 	value := unsafe.Pointer(&data[0])
 	length := C.size_t(len(data))
@@ -271,8 +270,7 @@ func bytesToBuffer(data []byte) (cdesc C.gss_buffer_desc) {
 	return
 }
 
-/* bufferToBytes creates a byte array using the contents of the passed-in
- * buffer. */
+/* bufferToBytes creates a byte array using the contents of the passed-in buffer. */
 func bufferToBytes(cdesc C.gss_buffer_desc) (b []byte) {
 	length := C.int(cdesc.length)
 
@@ -280,8 +278,7 @@ func bufferToBytes(cdesc C.gss_buffer_desc) (b []byte) {
 	return
 }
 
-/* buffersToBytes creates a byte array using the contents of the passed-in
- * buffer. */
+/* buffersToBytes creates an array of byte arrays using the contents of the passed-in buffer set. */
 func buffersToBytes(cdesc C.gss_buffer_set_desc) (b [][]byte) {
 	count := uint(cdesc.count)
 	var i uint
@@ -289,6 +286,39 @@ func buffersToBytes(cdesc C.gss_buffer_set_desc) (b [][]byte) {
 	b = make([][]byte, count)
 	for i = 0; i < count; i++ {
 		b[i] = bufferToBytes(C.nth_buffer_in_set(&cdesc, C.uint(i)))
+	}
+	return
+}
+
+/* bufferToString creates a string using the contents of the passed-in buffer. */
+func bufferToString(cdesc C.gss_buffer_desc) (text string) {
+	b := bufferToBytes(cdesc)
+	if len(b) > 0 && b[len(b) - 1] == 0 {
+		b = b[0:len(b) - 1]
+	}
+	buf := bytes.NewBuffer(b)
+	text = buf.String()
+	return
+}
+
+/* stringToBuffer creates a buffer using the contents of the string. */
+func stringToBuffer(text string) (cdesc C.gss_buffer_desc) {
+	value := unsafe.Pointer(C.CString(text))
+	length := C.size_t(len(text))
+
+	cdesc.value = value
+	cdesc.length = length
+	return
+}
+
+/* buffersToStrings creates a string array using the contents of the passed-in buffer set. */
+func buffersToStrings(cdesc C.gss_buffer_set_desc) (s []string) {
+	count := uint(cdesc.count)
+	var i uint
+
+	s = make([]string, count)
+	for i = 0; i < count; i++ {
+		s[i] = bufferToString(C.nth_buffer_in_set(&cdesc, C.uint(i)))
 	}
 	return
 }
@@ -790,12 +820,7 @@ func OidToStr(oid asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, text 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
 	if s.length > 0 {
-		tmp := bufferToBytes(s)
-		if len(tmp) > 0 && tmp[len(tmp) - 1] == 0 {
-			tmp = tmp[0:len(tmp) - 1]
-		}
-		buf := bytes.NewBuffer(tmp)
-		text = buf.String()
+		text = bufferToString(s)
 		major = C.gss_release_buffer(&minor, &s)
 	}
 	return
@@ -972,12 +997,7 @@ func DisplayStatus(statusValue uint32, statusType int, mechType asn1.ObjectIdent
 	minorStatus = uint32(minor)
 	messageContext = uint32(mctx)
 	if status.length > 0 {
-		tmp := bufferToBytes(status)
-		if len(tmp) > 0 && tmp[len(tmp) - 1] == 0 {
-			tmp = tmp[0:len(tmp) - 1]
-		}
-		buf := bytes.NewBuffer(tmp)
-		statusString = buf.String()
+		statusString = bufferToString(status)
 		major = C.gss_release_buffer(&minor, &status)
 	}
 	return
@@ -1020,12 +1040,7 @@ func DisplayName(name InternalName) (majorStatus, minorStatus uint32, nameString
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
 	if dname.length > 0 {
-		tmp := bufferToBytes(dname)
-		if len(tmp) > 0 && tmp[len(tmp) - 1] == 0 {
-			tmp = tmp[0:len(tmp) - 1]
-		}
-		buf := bytes.NewBuffer(tmp)
-		nameString = buf.String()
+		nameString = bufferToString(dname)
 		major = C.gss_release_buffer(&minor, &dname)
 	}
 	if ntype != nil {
@@ -1269,12 +1284,7 @@ func Localname(name InternalName, mechType asn1.ObjectIdentifier) (majorStatus, 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
 	if lname.length > 0 {
-		tmp := bufferToBytes(lname)
-		if len(tmp) > 0 && tmp[len(tmp) - 1] == 0 {
-			tmp = tmp[0:len(tmp) - 1]
-		}
-		buf := bytes.NewBuffer(tmp)
-		localName = buf.String()
+		localName = bufferToString(lname)
 		major = C.gss_release_buffer(&minor, &lname)
 	}
 	return
@@ -1519,7 +1529,7 @@ func DisplayNameExt(name InternalName, displayAsNameType asn1.ObjectIdentifier) 
 	return
 }
 
-func InquireName(name InternalName) (majorStatus, minorStatus uint32, nameIsMN bool, mnMech asn1.ObjectIdentifier, attrs [][]byte) {
+func InquireName(name InternalName) (majorStatus, minorStatus uint32, nameIsMN bool, mnMech asn1.ObjectIdentifier, attrs []string) {
 	iname := C.gss_name_t(name)
 	var major, minor C.OM_uint32
 	var ismn C.int
@@ -1536,23 +1546,25 @@ func InquireName(name InternalName) (majorStatus, minorStatus uint32, nameIsMN b
 		major = C.gss_release_oid(&minor, &oid)
 	}
 	if buffers != nil {
-		attrs = buffersToBytes(*buffers)
+		attrs = buffersToStrings(*buffers)
 		major = C.gss_release_buffer_set(&minor, &buffers)
 	}
 	return
 }
 
-func GetNameAttribute(name InternalName, attr []byte) (majorStatus, minorStatus uint32, authenticated, complete bool, value, displayValue []byte, more bool) {
+func GetNameAttribute(name InternalName, attr string, more *int) (majorStatus, minorStatus uint32, authenticated, complete bool, value []byte, displayValue string) {
 	iname := C.gss_name_t(name)
-	buffer := bytesToBuffer(attr)
+	abuffer := stringToBuffer(attr)
+	moar := C.int(*more)
 	var major, minor C.OM_uint32
-	var auth, comp, moar C.int
+	var auth, comp C.int
 	var val, dval C.gss_buffer_desc
 
-	major = C.gss_get_name_attribute(&minor, iname, &buffer, &auth, &comp, &val, &dval, &moar)
+	major = C.gss_get_name_attribute(&minor, iname, &abuffer, &auth, &comp, &val, &dval, &moar)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
+	major = C.gss_release_buffer(&minor, &abuffer)
 	authenticated = (auth != 0)
 	complete = (comp != 0)
 	if val.length > 0 {
@@ -1560,10 +1572,10 @@ func GetNameAttribute(name InternalName, attr []byte) (majorStatus, minorStatus 
 		major = C.gss_release_buffer(&minor, &val)
 	}
 	if dval.length > 0 {
-		displayValue = bufferToBytes(dval)
+		displayValue = bufferToString(dval)
 		major = C.gss_release_buffer(&minor, &dval)
 	}
-	more = (moar != 0)
+	*more = int(moar)
 	return
 }
 
