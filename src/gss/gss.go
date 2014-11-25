@@ -93,12 +93,14 @@ const (
 	IOV_BUFFER_FLAG_ALLOCATE    = C.GSS_IOV_BUFFER_FLAG_ALLOCATE
 	IOV_BUFFER_FLAG_ALLOCATED   = C.GSS_IOV_BUFFER_FLAG_ALLOCATED
 
-	//	C_NO_CRED_STORE
+	// C_NO_CRED_STORE
 
+	// credUsage values passed to AcquireCred(), AddCred(), StoreCred() and related functions.
 	C_BOTH     = C.GSS_C_BOTH
 	C_INITIATE = C.GSS_C_INITIATE
 	C_ACCEPT   = C.GSS_C_ACCEPT
 
+	// statusType values to be passed to DisplayStatus().
 	C_GSS_CODE  = C.GSS_C_GSS_CODE
 	C_MECH_CODE = C.GSS_C_MECH_CODE
 
@@ -139,15 +141,19 @@ const (
 	//	C_NULL_OID_SET = nil
 
 	C_QOP_DEFAULT = C.GSS_C_QOP_DEFAULT
+
+	// The maximum-allowed lifetime value.
 	C_INDEFINITE  = C.GSS_C_INDEFINITE
 
-	S_COMPLETE                = C.GSS_S_COMPLETE
 	C_CALLING_ERROR_OFFSET    = C.GSS_C_CALLING_ERROR_OFFSET
 	C_ROUTINE_ERROR_OFFSET    = C.GSS_C_ROUTINE_ERROR_OFFSET
 	C_SUPPLEMENTARY_OFFSET    = C.GSS_C_SUPPLEMENTARY_OFFSET
 	C_CALLING_ERROR_MASK      = C.GSS_C_CALLING_ERROR_MASK
 	C_ROUTINE_ERROR_MASK      = C.GSS_C_ROUTINE_ERROR_MASK
 	C_SUPPLEMENTARY_MASK      = C.GSS_C_SUPPLEMENTARY_MASK
+
+	// Major result codes.
+	S_COMPLETE                = C.GSS_S_COMPLETE
 	S_CALL_INACCESSIBLE_READ  = C.GSS_S_CALL_INACCESSIBLE_READ
 	S_CALL_INACCESSIBLE_WRITE = C.GSS_S_CALL_INACCESSIBLE_WRITE
 	S_CALL_BAD_STRUCTURE      = C.GSS_S_CALL_BAD_STRUCTURE
@@ -175,21 +181,19 @@ const (
 	S_OLD_TOKEN               = C.GSS_S_OLD_TOKEN
 	S_UNSEQ_TOKEN             = C.GSS_S_UNSEQ_TOKEN
 	S_GAP_TOKEN               = C.GSS_S_GAP_TOKEN
+	S_CRED_UNAVAIL            = C.GSS_S_CRED_UNAVAIL
+
+	// prfKey values to be passed to PseudoRandom()
 	C_PRF_KEY_FULL            = C.GSS_C_PRF_KEY_FULL
 	C_PRF_KEY_PARTIAL         = C.GSS_C_PRF_KEY_PARTIAL
-	S_CRED_UNAVAIL            = C.GSS_S_CRED_UNAVAIL
 )
 
 var (
-	KRB5_NT_HOSTBASED_SERVICE_NAME = coidToOid(*C.GSS_KRB5_NT_HOSTBASED_SERVICE_NAME)
-	KRB5_NT_USER_NAME              = coidToOid(*C.GSS_KRB5_NT_USER_NAME)
-	KRB5_NT_MACHINE_UID_NAME       = coidToOid(*C.GSS_KRB5_NT_MACHINE_UID_NAME)
-	KRB5_NT_STRING_UID_NAME        = coidToOid(*C.GSS_KRB5_NT_STRING_UID_NAME)
-
 	C_INQ_SSPI_SESSION_KEY  = coidToOid(*C.GSS_C_INQ_SSPI_SESSION_KEY)
-	C_ATTR_LOCAL_LOGIN_USER = bufferToBytes(*C.GSS_C_ATTR_LOCAL_LOGIN_USER)
+	C_ATTR_LOCAL_LOGIN_USER = bufferToString(*C.GSS_C_ATTR_LOCAL_LOGIN_USER)
 	C_NT_COMPOSITE_EXPORT   = coidToOid(*C.GSS_C_NT_COMPOSITE_EXPORT)
 
+	// Recognized name types.
 	C_NT_USER_NAME           = coidToOid(*C.GSS_C_NT_USER_NAME)
 	C_NT_MACHINE_UID_NAME    = coidToOid(*C.GSS_C_NT_MACHINE_UID_NAME)
 	C_NT_STRING_UID_NAME     = coidToOid(*C.GSS_C_NT_STRING_UID_NAME)
@@ -197,7 +201,13 @@ var (
 	C_NT_HOSTBASED_SERVICE   = coidToOid(*C.GSS_C_NT_HOSTBASED_SERVICE)
 	C_NT_ANONYMOUS           = coidToOid(*C.GSS_C_NT_ANONYMOUS)
 	C_NT_EXPORT_NAME         = coidToOid(*C.GSS_C_NT_EXPORT_NAME)
+	KRB5_NT_PRINCIPAL_NAME = coidToOid(*C.GSS_KRB5_NT_PRINCIPAL_NAME)
+	KRB5_NT_HOSTBASED_SERVICE_NAME = coidToOid(*C.GSS_KRB5_NT_HOSTBASED_SERVICE_NAME)
+	KRB5_NT_USER_NAME              = coidToOid(*C.GSS_KRB5_NT_USER_NAME)
+	KRB5_NT_MACHINE_UID_NAME       = coidToOid(*C.GSS_KRB5_NT_MACHINE_UID_NAME)
+	KRB5_NT_STRING_UID_NAME        = coidToOid(*C.GSS_KRB5_NT_STRING_UID_NAME)
 
+	// Recognized mechanism attributes.
 	C_MA_MECH_CONCRETE  = coidToOid(*C.GSS_C_MA_MECH_CONCRETE)
 	C_MA_MECH_PSEUDO    = coidToOid(*C.GSS_C_MA_MECH_PSEUDO)
 	C_MA_MECH_COMPOSITE = coidToOid(*C.GSS_C_MA_MECH_COMPOSITE)
@@ -226,8 +236,7 @@ var (
 	C_MA_COMPRESS       = coidToOid(*C.GSS_C_MA_COMPRESS)
 	C_MA_CTX_TRANS      = coidToOid(*C.GSS_C_MA_CTX_TRANS)
 
-	KRB5_NT_PRINCIPAL_NAME = coidToOid(*C.GSS_KRB5_NT_PRINCIPAL_NAME)
-
+	// Recognized mechanisms.
 	Mech_krb5          = coidToOid(*C.gss_mech_krb5)
 	Mech_krb5_old      = coidToOid(*C.gss_mech_krb5_old)
 	Mech_krb5_wrong    = coidToOid(*C.gss_mech_krb5_wrong)
@@ -516,7 +525,7 @@ func credStoreToKVSet(credStore [][2]string) (kvset C.gss_key_value_set_desc) {
 	return
 }
 
-/* AcquireCred() obtains credentials to be used to either initiate or accept a security context. */
+/* AcquireCred() obtains credentials to be used to either initiate or accept (or both) a security context as desiredName.  The returned outputCredHandle should be released using gss.ReleaseCred() when it's no longer needed. */
 func AcquireCred(desiredName InternalName, lifetimeReq uint32, desiredMechs []asn1.ObjectIdentifier, credUsage uint32) (majorStatus, minorStatus uint32, outputCredHandle CredHandle, actualMechs []asn1.ObjectIdentifier, lifetimeRec uint32) {
 	name := C.gss_name_t(desiredName)
 	lifetime := C.OM_uint32(lifetimeReq)
@@ -550,7 +559,7 @@ func ReleaseCred(credHandle CredHandle) (majorStatus, minorStatus uint32) {
 	return
 }
 
-/* InquireCred() reads information about a credential handle, or the default acceptor credentials if credHandle is nil. */
+/* InquireCred() reads information about a credential handle, or about the default acceptor credentials if credHandle is nil.  The returned credName should be released using gss.ReleaseName() when it's no longer needed. */
 func InquireCred(credHandle CredHandle) (majorStatus, minorStatus uint32, credName InternalName, lifetimeRec, credUsage uint32, mechSet []asn1.ObjectIdentifier) {
 	handle := C.gss_cred_id_t(credHandle)
 	name := C.gss_name_t(nil)
@@ -570,7 +579,7 @@ func InquireCred(credHandle CredHandle) (majorStatus, minorStatus uint32, credNa
 	return
 }
 
-/* AddCred() obtains credentials specific to a particular mechanism, optionally merging them with already-obtained credentials (if outputCredHandle is not nil) or storing them in a new credential handle. */
+/* AddCred() obtains credentials specific to a particular mechanism, optionally merging them with already-obtained credentials (if outputCredHandle is not nil) or storing them in an entirely new credential handle. */
 func AddCred(credHandle CredHandle, desiredName InternalName, desiredMech asn1.ObjectIdentifier, initiatorTimeReq, acceptorTimeReq, credUsage uint32, outputCredHandle CredHandle) (majorStatus, minorStatus uint32, outputCredHandleRec CredHandle, actualMechs []asn1.ObjectIdentifier, initiatorTimeRec, acceptorTimeRec uint32) {
 	handle := C.gss_cred_id_t(credHandle)
 	name := C.gss_name_t(desiredName)
@@ -595,7 +604,7 @@ func AddCred(credHandle CredHandle, desiredName InternalName, desiredMech asn1.O
 	return
 }
 
-/* InquireCredByMech() obtains information about mechanism-specific credentials. */
+/* InquireCredByMech() obtains information about mechanism-specific credentials.  The returned credName is a mechanism-specific name, and should be released using gss.ReleaseName() when it's no longer needed. */
 func InquireCredByMech(credHandle CredHandle, mechType asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, credName InternalName, initiatorLifetimeRec, acceptorLifetimeRec, credUsage uint32) {
 	handle := C.gss_cred_id_t(credHandle)
 	mech := oidToCOid(mechType)
@@ -787,7 +796,7 @@ func DeleteSecContext(contextHandle ContextHandle) (majorStatus, minorStatus uin
 	return
 }
 
-/* ProcessContextToken() processes a context token which was created using DeleteSecContext().  It is not usually used, and is included for backward compatibility. */
+/* ProcessContextToken() processes a context token which was created using gss.DeleteSecContext().  It is not usually used, and is included for backward compatibility. */
 func ProcessContextToken(contextHandle ContextHandle, contextToken []byte) (majorStatus, minorStatus uint32) {
 	handle := C.gss_ctx_id_t(contextHandle)
 	var major, minor C.OM_uint32
@@ -903,7 +912,7 @@ func ExportSecContext(contextHandle ContextHandle) (majorStatus, minorStatus uin
 	return
 }
 
-/* ImportSecContext() deserializes all state data related to an established security context.  The returned contextHandle can be used immediately. */
+/* ImportSecContext() deserializes all state data related to an established security context and reconstructs it.  The returned contextHandle can be used immediately, and should eventually be freed using gss.DeleteSecContext(). */
 func ImportSecContext(interprocessToken []byte) (majorStatus, minorStatus uint32, contextHandle ContextHandle) {
 	token := bytesToBuffer(interprocessToken)
 	var major, minor C.OM_uint32
@@ -1000,7 +1009,7 @@ func Unwrap(contextHandle ContextHandle, inputMessage []byte) (majorStatus, mino
 	return
 }
 
-/* DisplayStatus() returns a printable representation of a mechanism-specific major or minor status code. */
+/* DisplayStatus() returns a printable representation of a major (C_GSS_CODE) or mechanism-specific minor (C_MECH_CODE) status code. */
 func DisplayStatus(statusValue uint32, statusType int, mechType asn1.ObjectIdentifier) (majorStatus, minorStatus, messageContext uint32, statusString string) {
 	value := C.OM_uint32(statusValue)
 	stype := C.int(statusType)
@@ -1021,7 +1030,7 @@ func DisplayStatus(statusValue uint32, statusType int, mechType asn1.ObjectIdent
 	return
 }
 
-/* IndicateMechs() returns a list of the available security mechanism OIDs. */
+/* IndicateMechs() returns a list of the available security mechanism types. */
 func IndicateMechs() (majorStatus, minorStatus uint32, mechSet []asn1.ObjectIdentifier) {
 	var major, minor C.OM_uint32
 	var mechs C.gss_OID_set
@@ -1034,7 +1043,7 @@ func IndicateMechs() (majorStatus, minorStatus uint32, mechSet []asn1.ObjectIden
 	return
 }
 
-/* CompareName() compares two names to see if they refer to the same identity. */
+/* CompareName() compares two names to see if they refer to the same entity. */
 func CompareName(name1, name2 InternalName) (majorStatus, minorStatus uint32, nameEqual bool) {
 	n1 := C.gss_name_t(name1)
 	n2 := C.gss_name_t(name2)
@@ -1071,7 +1080,7 @@ func DisplayName(name InternalName) (majorStatus, minorStatus uint32, nameString
 	return
 }
 
-/* ImportName() creates an InternalName from an external representation and name type, which is often gss.C_NT_HOSTBASED_SERVICE. */
+/* ImportName() creates an InternalName from an external representation and name type, which is often gss.C_NT_USER_NAME or gss.C_NT_HOSTBASED_SERVICE.  The returned outputName should eventually be freed by calling gss.ReleaseName(). */
 func ImportName(inputName string, nameType asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, outputName InternalName) {
 	ntype := oidToCOid(nameType)
 	var major, minor C.OM_uint32
@@ -1105,6 +1114,7 @@ func ReleaseName(inputName InternalName) (majorStatus, minorStatus uint32) {
 
 /* ReleaseBuffer ReleaseOidSet CreateEmptyOidSet AddOidSetMember TestOidSetMember */
 
+/* InquireNamesForMech() returns a list of the name types which can be used with the specified mechanism. */
 func InquireNamesForMech(inputMechType asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, nameTypeSet []asn1.ObjectIdentifier) {
 	mech := oidToCOid(inputMechType)
 	var major, minor C.OM_uint32
@@ -1120,6 +1130,7 @@ func InquireNamesForMech(inputMechType asn1.ObjectIdentifier) (majorStatus, mino
 	return
 }
 
+/* InquireMechsForName() returns a list of the mechanisms with which the provided name can be used. */
 func InquireMechsForName(inputName InternalName) (majorStatus, minorStatus uint32, mechTypes []asn1.ObjectIdentifier) {
 	name := C.gss_name_t(inputName)
 	var major, minor C.OM_uint32
@@ -1134,6 +1145,7 @@ func InquireMechsForName(inputName InternalName) (majorStatus, minorStatus uint3
 	return
 }
 
+/* CanonicalizeName() returns a copy of inputName that has been canonicalized according to the rules for the specified mechanism.  The returned outputName should eventually be freed using gss.ReleaseName(). */
 func CanonicalizeName(inputName InternalName, mechType asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, outputName InternalName) {
 	name := C.gss_name_t(inputName)
 	mech := oidToCOid(mechType)
@@ -1149,7 +1161,8 @@ func CanonicalizeName(inputName InternalName, mechType asn1.ObjectIdentifier) (m
 	return
 }
 
-func ExportName(inputName InternalName) (majorStatus, minorStatus uint32, outputName string) {
+/* ExportName() returns a flat representation of a mechanism-specific inputName that's suitable for bytewise comparison with other exported names. */
+func ExportName(inputName InternalName) (majorStatus, minorStatus uint32, outputName []byte) {
 	name := C.gss_name_t(inputName)
 	var major, minor C.OM_uint32
 	var newname C.gss_buffer_desc
@@ -1159,11 +1172,13 @@ func ExportName(inputName InternalName) (majorStatus, minorStatus uint32, output
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
 	if newname.length > 0 {
-		outputName = C.GoStringN((*C.char)(newname.value), C.int(newname.length))
+		outputName = bufferToBytes(newname)
+		major = C.gss_release_buffer(&minor, &newname)
 	}
 	return
 }
 
+/* DuplicateName() returns a copy of inputName which will eventually need to be freed using gss.ReleaseName(). */
 func DuplicateName(inputName InternalName) (majorStatus, minorStatus uint32, destName InternalName) {
 	name := C.gss_name_t(inputName)
 	var major, minor C.OM_uint32
@@ -1177,6 +1192,7 @@ func DuplicateName(inputName InternalName) (majorStatus, minorStatus uint32, des
 	return
 }
 
+/* PseudoRandom() generates some pseudo-random data using the context handle of the desired level of randomness (either gss.C_PRF_KEY_FULL or gss.C_PRF_KEY_PARTIAL) of the desired size. */
 func PseudoRandom(contextHandle ContextHandle, prfKey int, prfIn []byte, desiredOutputLen int) (majorStatus, minorStatus uint32, prfOut []byte) {
 	handle := C.gss_ctx_id_t(contextHandle)
 	pkey := C.int(prfKey)
@@ -1195,6 +1211,7 @@ func PseudoRandom(contextHandle ContextHandle, prfKey int, prfIn []byte, desired
 	return
 }
 
+/* StoreCred() stores non-nil credentials (for initiator, acceptor, or both) in the current credential store. */
 func StoreCred(credHandle CredHandle, credUsage uint32, desiredMech asn1.ObjectIdentifier, overwriteCred, defCred bool) (majorStatus, minorStatus uint32, elementsStored []asn1.ObjectIdentifier, credUsageStored uint32) {
 	handle := C.gss_cred_id_t(credHandle)
 	usage := C.gss_cred_usage_t(credUsage)
@@ -1220,6 +1237,7 @@ func StoreCred(credHandle CredHandle, credUsage uint32, desiredMech asn1.ObjectI
 	return
 }
 
+/* SetNegMechs() sets the list of mechanisms which will be negotiated when using credHandle with the SPNEGO mechanism ("1.3.6.1.5.5.2"). */
 func SetNegMechs(credHandle CredHandle, mechSet []asn1.ObjectIdentifier) (majorStatus, minorStatus uint32) {
 	handle := C.gss_cred_id_t(credHandle)
 	mechs := oidsToCOidSet(mechSet)
@@ -1233,6 +1251,7 @@ func SetNegMechs(credHandle CredHandle, mechSet []asn1.ObjectIdentifier) (majorS
 	return
 }
 
+/* IndicateMechsByAttrs() returns a list of security mechanisms, each of which matches at least one of the desiredMechAttrs, none of which match any of the exceptMechAttrs, and all of which match all of the criticalMechAttrs. */
 func IndicateMechsByAttrs(desiredMechAttrs, exceptMechAttrs, criticalMechAttrs []asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, mechs []asn1.ObjectIdentifier) {
 	desired := oidsToCOidSet(desiredMechAttrs)
 	except := oidsToCOidSet(exceptMechAttrs)
@@ -1252,6 +1271,7 @@ func IndicateMechsByAttrs(desiredMechAttrs, exceptMechAttrs, criticalMechAttrs [
 	return
 }
 
+/* Krb5ExtractAuthzDataFromSecContext() returns the raw bytes of a specific Kerberos auth-data type associated with the established security context's client. */
 func Krb5ExtractAuthzDataFromSecContext(contextHandle ContextHandle, adType int) (majorStatus, minorStatus uint32, adData []byte) {
 	handle := C.gss_ctx_id_t(contextHandle)
 	adtype := C.int(adType)
@@ -1268,6 +1288,7 @@ func Krb5ExtractAuthzDataFromSecContext(contextHandle ContextHandle, adType int)
 	return
 }
 
+/* Krb5RegisterAcceptorIdentity() sets the location of the keytab which will be used when acting as an acceptor using Kerberos 5 mechanisms. */
 func Krb5RegisterAcceptorIdentity(identity string) uint32 {
 	id := C.CString(identity)
 	var ret C.OM_uint32
@@ -1277,6 +1298,7 @@ func Krb5RegisterAcceptorIdentity(identity string) uint32 {
 	return uint32(ret)
 }
 
+/* PNameToUid returns a numeric UID corresponding to the entity named by name. */
 func PNameToUid(name InternalName, nmech asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, uid string) {
 	iname := C.gss_name_t(name)
 	mech := oidToCOid(nmech)
@@ -1290,11 +1312,12 @@ func PNameToUid(name InternalName, nmech asn1.ObjectIdentifier) (majorStatus, mi
 	minorStatus = uint32(minor)
 	uid = ""
 	if majorStatus == 0 {
-		uid = fmt.Sprintf("%u", uint32(id))
+		uid = fmt.Sprintf("%d", uint32(id))
 	}
 	return
 }
 
+/* Localname() returns the name of a local user who is considered to be the same entity as name. */
 func Localname(name InternalName, mechType asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, localName string) {
 	iname := C.gss_name_t(name)
 	mech := oidToCOid(mechType)
@@ -1313,6 +1336,7 @@ func Localname(name InternalName, mechType asn1.ObjectIdentifier) (majorStatus, 
 	return
 }
 
+/* Userok() checks if the entity named by name is authorized to act as local user username. */
 func Userok(name InternalName, username string) (ok bool) {
 	iname := C.gss_name_t(name)
 	lname := C.CString(username)
@@ -1325,6 +1349,7 @@ func Userok(name InternalName, username string) (ok bool) {
 	return
 }
 
+/* Userok() checks if the entity named by name is authorized to act as local user user. */
 func AuthorizeLocalname(name, user InternalName) (majorStatus, minorStatus uint32) {
 	iname := C.gss_name_t(name)
 	uname := C.gss_name_t(user)
@@ -1337,7 +1362,8 @@ func AuthorizeLocalname(name, user InternalName) (majorStatus, minorStatus uint3
 	return
 }
 
-func AcquireCredWithPassword(desiredName InternalName, password []byte, timeReq uint32, desiredMechs []asn1.ObjectIdentifier, credUsage uint32) (majorStatus, minorStatus uint32, cred CredHandle, actualMechs []asn1.ObjectIdentifier, timeRec uint32) {
+/* AcquireCredWithPassword() uses a password to obtain credentials to act as desiredName as an initiator, as an acceptor, or as both.  The returned credHandle should eventually be freed using gss.ReleaseCred(). */
+func AcquireCredWithPassword(desiredName InternalName, password []byte, timeReq uint32, desiredMechs []asn1.ObjectIdentifier, credUsage uint32) (majorStatus, minorStatus uint32, credHandle CredHandle, actualMechs []asn1.ObjectIdentifier, timeRec uint32) {
 	name := C.gss_name_t(desiredName)
 	pwd := bytesToBuffer(password)
 	time := C.OM_uint32(timeReq)
@@ -1352,7 +1378,7 @@ func AcquireCredWithPassword(desiredName InternalName, password []byte, timeReq 
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	cred = CredHandle(handle)
+	credHandle = CredHandle(handle)
 	actualMechs = coidSetToOids(amechs)
 	C.free_oid_set(amechs)
 	timeRec = uint32(time)
@@ -1488,6 +1514,7 @@ func WrapIOVLength(contextHandle ContextHandle, confReq bool, qopReq uint32, mes
 func GetMICIOV(contextHandle ContextHandle, qopReq uint32, messages []IOV) (majorStatus, minorStatus uint32)
 func VerifyMICIOV(contextHandle ContextHandle, messages []IOV) (majorStatus, minorStatus uint32, qopState uint32)
 
+/* AcquireCredImpersonateName() uses impersonatorCredHandle to acquire credentials which can be used to impersonate desiredName and returns a new outputCredHandle. */
 func AcquireCredImpersonateName(impersonatorCredHandle CredHandle, desiredName InternalName, timeReq uint32, desiredMechs []asn1.ObjectIdentifier, credUsage uint32) (majorStatus, minorStatus uint32, outputCredHandle CredHandle, actualMechs []asn1.ObjectIdentifier, timeRec uint32) {
 	cred := C.gss_cred_id_t(impersonatorCredHandle)
 	name := C.gss_name_t(desiredName)
@@ -1509,16 +1536,17 @@ func AcquireCredImpersonateName(impersonatorCredHandle CredHandle, desiredName I
 	return
 }
 
-func AddCredImpersonateName(inputCredHandle, impersonatorCredHandle CredHandle, desiredName InternalName, desiredMech asn1.ObjectIdentifier, credUsage, initiatorTimeReq, acceptorTimeReq uint32) (majorStatus, minorStatus uint32, outputCredHandle CredHandle, actualMechs []asn1.ObjectIdentifier, initiatorTimeRec, acceptorTimeRec uint32) {
+/* AddCredImpersonateName() uses impersonatorCredHandle to acquire credentials which can be used to impersonate desiredName, merging them with outputCredHandle (if non-nil), or creating an entirely new credential handle, returning them in outputCredHandleRec. */
+func AddCredImpersonateName(inputCredHandle, impersonatorCredHandle CredHandle, desiredName InternalName, desiredMech asn1.ObjectIdentifier, credUsage, initiatorTimeReq, acceptorTimeReq uint32, outputCredHandle CredHandle) (majorStatus, minorStatus uint32, outputCredHandleRec CredHandle, actualMechs []asn1.ObjectIdentifier, initiatorTimeRec, acceptorTimeRec uint32) {
 	cred := C.gss_cred_id_t(inputCredHandle)
 	icred := C.gss_cred_id_t(impersonatorCredHandle)
+	ocred := C.gss_cred_id_t(outputCredHandle)
 	name := C.gss_name_t(desiredName)
 	mech := oidToCOid(desiredMech)
 	usage := C.gss_cred_usage_t(credUsage)
 	itime := C.OM_uint32(initiatorTimeReq)
 	atime := C.OM_uint32(acceptorTimeReq)
 	var major, minor C.OM_uint32
-	var ocred C.gss_cred_id_t
 	var amechs C.gss_OID_set
 
 	major = C.gss_add_cred_impersonate_name(&minor, cred, icred, name, mech, usage, itime, atime, &ocred, &amechs, &itime, &atime)
@@ -1526,7 +1554,7 @@ func AddCredImpersonateName(inputCredHandle, impersonatorCredHandle CredHandle, 
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	outputCredHandle = CredHandle(ocred)
+	outputCredHandleRec = CredHandle(ocred)
 	actualMechs = coidSetToOids(amechs)
 	C.free_oid_set(amechs)
 	initiatorTimeRec = uint32(itime)
@@ -1534,7 +1562,7 @@ func AddCredImpersonateName(inputCredHandle, impersonatorCredHandle CredHandle, 
 	return
 }
 
-func DisplayNameExt(name InternalName, displayAsNameType asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, displayName []byte) {
+func DisplayNameExt(name InternalName, displayAsNameType asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, displayName string) {
 	iname := C.gss_name_t(name)
 	ntype := oidToCOid(displayAsNameType)
 	var major, minor C.OM_uint32
@@ -1546,12 +1574,13 @@ func DisplayNameExt(name InternalName, displayAsNameType asn1.ObjectIdentifier) 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
 	if dname.length > 0 {
-		displayName = bufferToBytes(dname)
+		displayName = bufferToString(dname)
 		major = C.gss_release_buffer(&minor, &dname)
 	}
 	return
 }
 
+/* InquireName() returns a list of attributes which are known about name. */
 func InquireName(name InternalName) (majorStatus, minorStatus uint32, nameIsMN bool, mnMech asn1.ObjectIdentifier, attrs []string) {
 	iname := C.gss_name_t(name)
 	var major, minor C.OM_uint32
@@ -1575,6 +1604,7 @@ func InquireName(name InternalName) (majorStatus, minorStatus uint32, nameIsMN b
 	return
 }
 
+/* GetNameAttribute() returns a value for the named attribute which is known about name.  When called for the first time, more should be set to -1.  When the last value of the attribute is returned, more will be set to 0. */
 func GetNameAttribute(name InternalName, attr string, more *int) (majorStatus, minorStatus uint32, authenticated, complete bool, value []byte, displayValue string) {
 	iname := C.gss_name_t(name)
 	abuffer := stringToBuffer(attr)
@@ -1602,10 +1632,11 @@ func GetNameAttribute(name InternalName, attr string, more *int) (majorStatus, m
 	return
 }
 
-func SetNameAttribute(name InternalName, complete bool, attribute, value []byte) (majorStatus, minorStatus uint32) {
+/* SetNameAttribute() adds a named attribute value for name. */
+func SetNameAttribute(name InternalName, complete bool, attribute string, value []byte) (majorStatus, minorStatus uint32) {
 	iname := C.gss_name_t(name)
 	var comp C.int
-	attr := bytesToBuffer(attribute)
+	attr := stringToBuffer(attribute)
 	val := bytesToBuffer(value)
 	var major, minor C.OM_uint32
 
@@ -1616,18 +1647,21 @@ func SetNameAttribute(name InternalName, complete bool, attribute, value []byte)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
+	major = C.gss_release_buffer(&minor, &attr)
 	return
 }
 
-func DeleteNameAttribute(name InternalName, attribute []byte) (majorStatus, minorStatus uint32) {
+/* DeleteNameAttribute() removes a named attribute for name. */
+func DeleteNameAttribute(name InternalName, attribute string) (majorStatus, minorStatus uint32) {
 	iname := C.gss_name_t(name)
-	attr := bytesToBuffer(attribute)
+	attr := stringToBuffer(attribute)
 	var major, minor C.OM_uint32
 
 	major = C.gss_delete_name_attribute(&minor, iname, &attr)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
+	major = C.gss_release_buffer(&minor, &attr)
 	return
 }
 
@@ -1647,6 +1681,7 @@ func ExportNameComposite(name InternalName) (majorStatus, minorStatus uint32, co
 	return
 }
 
+/* AcquireCredFrom() obtains credentials to be used to either initiate or accept (or both) a security context as desiredName using information pointed to by the credStore.  The returned outputCredHandle should be released using gss.ReleaseCred() when it's no longer needed. */
 func AcquireCredFrom(desiredName InternalName, timeReq uint32, desiredMechs []asn1.ObjectIdentifier, desiredCredUsage uint32, credStore [][2]string) (majorStatus, minorStatus uint32, outputCredHandle CredHandle, actualMechs []asn1.ObjectIdentifier, timeRec uint32) {
 	name := C.gss_name_t(desiredName)
 	time := C.OM_uint32(timeReq)
@@ -1670,8 +1705,10 @@ func AcquireCredFrom(desiredName InternalName, timeReq uint32, desiredMechs []as
 	return
 }
 
-func AddCredFrom(inputCredHandle CredHandle, desiredName InternalName, desiredMech asn1.ObjectIdentifier, desiredCredUsage, initiatorTimeReq, acceptorTimeReq uint32, credStore [][2]string) (majorStatus, minorStatus uint32, outputCredHandle CredHandle, actualMechs []asn1.ObjectIdentifier, initiatorTimeRec, acceptorTimeRec uint32) {
-	cred := C.gss_cred_id_t(inputCredHandle)
+/* AddCredFrom() obtains credentials specific to a particular mechanism using information pointed to by credStore, optionally merging them with already-obtained credentials (if outputCredHandle is not nil) or storing them in a new credential handle which should eventually be freed using gss.ReleaseCred(). */
+func AddCredFrom(inputCredHandle CredHandle, desiredName InternalName, desiredMech asn1.ObjectIdentifier, desiredCredUsage, initiatorTimeReq, acceptorTimeReq uint32, outputCredHandle CredHandle, credStore [][2]string) (majorStatus, minorStatus uint32, outputCredHandleRec CredHandle, actualMechs []asn1.ObjectIdentifier, initiatorTimeRec, acceptorTimeRec uint32) {
+	icred := C.gss_cred_id_t(inputCredHandle)
+	ocred := C.gss_cred_id_t(outputCredHandle)
 	name := C.gss_name_t(desiredName)
 	mech := oidToCOid(desiredMech)
 	usage := C.gss_cred_usage_t(desiredCredUsage)
@@ -1681,13 +1718,13 @@ func AddCredFrom(inputCredHandle CredHandle, desiredName InternalName, desiredMe
 	var major, minor C.OM_uint32
 	var mechs C.gss_OID_set
 
-	major = C.gss_add_cred_from(&minor, cred, name, mech, usage, itime, atime, &kvset, &cred, &mechs, &itime, &atime)
+	major = C.gss_add_cred_from(&minor, icred, name, mech, usage, itime, atime, &kvset, &ocred, &mechs, &itime, &atime)
 	C.free_oid(mech)
 	C.free_kv_set(kvset)
 
 	majorStatus = uint32(major)
 	minorStatus = uint32(minor)
-	outputCredHandle = CredHandle(cred)
+	outputCredHandleRec = CredHandle(ocred)
 	actualMechs = coidSetToOids(mechs)
 	C.free_oid_set(mechs)
 	initiatorTimeRec = uint32(itime)
@@ -1695,6 +1732,7 @@ func AddCredFrom(inputCredHandle CredHandle, desiredName InternalName, desiredMe
 	return
 }
 
+/* StoreCredInto() stores non-nil credentials (for initiator, acceptor, or both) in locations pointed to by the credential store, or the default location if defaultCred is set. */
 func StoreCredInto(inputCredHandle CredHandle, desiredCredUsage uint32, desiredMech asn1.ObjectIdentifier, overwriteCred, defaultCred bool, credStore [][2]string) (majorStatus, minorStatus uint32, elementsStored []asn1.ObjectIdentifier, credUsage uint32) {
 	cred := C.gss_cred_id_t(inputCredHandle)
 	usage := C.gss_cred_usage_t(desiredCredUsage)
@@ -1722,6 +1760,7 @@ func StoreCredInto(inputCredHandle CredHandle, desiredCredUsage uint32, desiredM
 	return
 }
 
+/* ExportCred() serializes the contents of the credential handle into a portable token.  The credHandle is not modified. */
 func ExportCred(credHandle CredHandle) (majorStatus, minorStatus uint32, token []byte) {
 	handle := C.gss_cred_id_t(credHandle)
 	var major, minor C.OM_uint32
@@ -1738,6 +1777,7 @@ func ExportCred(credHandle CredHandle) (majorStatus, minorStatus uint32, token [
 	return
 }
 
+/* ImportCred() constructs a credential handle using the contents of the passed-in token.  The returned credHandle should eventually be freed using gss.ReleaseCred(). */
 func ImportCred(token []byte) (majorStatus, minorStatus uint32, credHandle CredHandle) {
 	buffer := bytesToBuffer(token)
 	var major, minor C.OM_uint32
