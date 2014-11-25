@@ -53,6 +53,23 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 		return
 	}
 	if (tag & misc.TOKEN_CONTEXT_NEXT) != 0 {
+		/* Optionally export/reimport the acceptor cred a few times. */
+		if export && cred != nil {
+			for i := 0; i < 3; i++ {
+				major, minor, credToken := gss.ExportCred(cred)
+				major, minor, credToken = gss.ExportCred(cred)
+				major, minor, credToken = gss.ExportCred(cred)
+				if major != gss.S_COMPLETE {
+					misc.DisplayError("exporting a credential", major, minor, nil)
+					return
+				}
+				major, minor, cred = gss.ImportCred(credToken)
+				if major != gss.S_COMPLETE {
+					misc.DisplayError("importing a credential", major, minor, nil)
+					return
+				}
+			}
+		}
 		for {
 			/* Expect a context establishment token. */
 			tag, token := misc.RecvToken(conn)
@@ -76,6 +93,7 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 				}
 				misc.SendToken(conn, misc.TOKEN_CONTEXT, token)
 			}
+			/* We never use delegated creds, so if we got some, just make sure they get cleaned up. */
 			if dcred != nil {
 				defer gss.ReleaseCred(dcred)
 				dcred = nil
@@ -83,6 +101,7 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 			if major != gss.S_COMPLETE && major != gss.S_CONTINUE_NEEDED {
 				/* There was some kind of error. */
 				misc.DisplayError("accepting context", major, minor, &mech)
+				return
 			}
 			if major == gss.S_COMPLETE {
 				/* Okay, success. */
@@ -98,14 +117,17 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 		}
 		/* Make sure the context is cleaned up eventually. */
 		defer gss.DeleteSecContext(ctx)
+		/* Make sure the client name gets cleaned up eventually. */
+		defer gss.ReleaseName(cname)
 		/* Dig up information about the connection. */
 		misc.DisplayFlags(flags, false, logfile)
 		major, minor, oid := gss.OidToStr(mech)
 		if major != gss.S_COMPLETE {
 			misc.DisplayError("converting oid to string", major, minor, &mech)
-		}
-		if verbose && logfile != nil {
-			fmt.Fprintf(logfile, "Accepted connection using mechanism OID %s.\n", oid)
+		} else {
+			if verbose && logfile != nil {
+				fmt.Fprintf(logfile, "Accepted connection using mechanism OID %s.\n", oid)
+			}
 		}
 		/* Figure out the client's attributes and displayable and local names. */
 		major, minor, isMN, namemech, attrs := gss.InquireName(cname)
@@ -124,6 +146,7 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 						major, minor, authenticated, complete, value, displayValue := gss.GetNameAttribute(cname, attr, &more)
 						if major != gss.S_COMPLETE {
 							misc.DisplayError("getting name attribute", major, minor, &mech)
+							break
 						} else {
 							fmt.Fprintf(logfile, "Attribute %s \"%s\"", attr, displayValue)
 							if authenticated {
@@ -142,17 +165,39 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 				}
 			}
 		}
+		/* Exercise DuplicateName/ExportName. */
+		major, minor, tmpname := gss.DuplicateName(cname)
+		if major != gss.S_COMPLETE {
+			misc.DisplayError("duplicating name", major, minor, &mech)
+		} else {
+			defer gss.ReleaseName(tmpname)
+			major, minor, expname := gss.ExportName(tmpname)
+			if major != gss.S_COMPLETE {
+				misc.DisplayError("exporting name", major, minor, &mech)
+			} else {
+				fmt.Printf("exported name:\n")
+				dump(logfile, expname)
+			}
+		}
+		/* Exercise DisplayName. */
 		major, minor, client, _ = gss.DisplayName(cname)
 		if major != gss.S_COMPLETE {
 			misc.DisplayError("displaying name", major, minor, &mech)
 		}
+		/* Exercise Localname. */
 		major, minor, localname = gss.Localname(cname, nil)
 		if major != gss.S_COMPLETE {
 			misc.DisplayError("gss.Localname", major, minor, &mech)
 		} else {
 			fmt.Printf("localname: %s\n", localname)
 		}
-		defer gss.ReleaseName(cname)
+		/* Exercise PNameToUid. */
+		major, minor, localuid := gss.PNameToUid(cname, nil)
+		if major != gss.S_COMPLETE {
+			misc.DisplayError("gss.PNameToUid", major, minor, &mech)
+		} else {
+			fmt.Printf("UID: \"%s\"\n", localuid)
+		}
 	} else {
 		if logfile != nil {
 			fmt.Fprintf(logfile, "Accepted unauthenticated connection.\n")
@@ -173,7 +218,11 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 	}
 	/* Start processing message tokens from the client. */
 	if ctx != nil {
-		fmt.Printf("Accepted connection: \"%s\"\n", client)
+		if len(client) > 0 {
+			fmt.Printf("Accepted connection: \"%s\"\n", client)
+		} else {
+			fmt.Printf("Accepted connection.\n")
+		}
 	} else {
 		fmt.Printf("Accepted unauthenticated connection.\n")
 	}
