@@ -1,4 +1,4 @@
-Package gss provides bindings for a C implementation of GSS-API.  The provided API is *not* to be considered stable at this time.
+Package gss provides bindings for a C implementation of GSS-API.  The provided API is not to be considered stable at this time.
 
 In broad strokes:
 * gss\_buffer\_t is replaced by either []byte or string
