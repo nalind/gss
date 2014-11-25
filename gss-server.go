@@ -158,6 +158,19 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 			fmt.Fprintf(logfile, "Accepted unauthenticated connection.\n")
 		}
 	}
+	/* Optionally export/reimport the context a few times. */
+	if export {
+		for i := 0; i < 3; i++ {
+			major, minor, contextToken := gss.ExportSecContext(ctx)
+			if major != gss.S_COMPLETE {
+				misc.DisplayError("exporting a context", major, minor, &mech)
+			}
+			major, minor, ctx = gss.ImportSecContext(contextToken)
+			if major != gss.S_COMPLETE {
+				misc.DisplayError("importing a context", major, minor, &mech)
+			}
+		}
+	}
 	/* Start processing message tokens from the client. */
 	if ctx != nil {
 		fmt.Printf("Accepted connection: \"%s\"\n", client)
