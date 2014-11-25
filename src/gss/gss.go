@@ -241,10 +241,13 @@ var (
 	//Krb5_gss_oid_array = coidToOid(C.krb5_gss_oid_array)
 )
 
+/* CredHandle holds a reference to client or server credentials, or delegated credentials.  It should be released using gss.ReleaseCred() when it's no longer needed. */
 type CredHandle C.gss_cred_id_t
 
+/* CredHandle holds a reference to an established or partially-established security context.  It should be released using gss.DeleteSecContext() when it's no longer needed. */
 type ContextHandle C.gss_ctx_id_t
 
+/* CredHandle holds a reference to a client or server's name.  It should be released using gss.ReleaseName() when it's no longer needed. */
 type InternalName C.gss_name_t
 
 type ChannelBindings struct {
@@ -252,6 +255,7 @@ type ChannelBindings struct {
 	initiatorAddress, acceptorAddress, applicationData []byte
 }
 
+/* Flags describe requested parameters for a context passed to InitSecContext(), or the parameters of an established context as returned by AcceptSecContext() or InquireContext(). */
 type Flags struct {
 	Deleg, DelegPolicy, Mutual, Replay, Sequence, Anon, Conf, Integ, Trans, ProtReady bool
 }
@@ -512,6 +516,7 @@ func credStoreToKVSet(credStore [][2]string) (kvset C.gss_key_value_set_desc) {
 	return
 }
 
+/* AcquireCred() obtains credentials to be used to either initiate or accept a security context. */
 func AcquireCred(desiredName InternalName, lifetimeReq uint32, desiredMechs []asn1.ObjectIdentifier, credUsage uint32) (majorStatus, minorStatus uint32, outputCredHandle CredHandle, actualMechs []asn1.ObjectIdentifier, lifetimeRec uint32) {
 	name := C.gss_name_t(desiredName)
 	lifetime := C.OM_uint32(lifetimeReq)
@@ -533,6 +538,7 @@ func AcquireCred(desiredName InternalName, lifetimeReq uint32, desiredMechs []as
 	return
 }
 
+/* ReleaseCred() releases a credential handle which is no longer needed. */
 func ReleaseCred(credHandle CredHandle) (majorStatus, minorStatus uint32) {
 	handle := C.gss_cred_id_t(credHandle)
 	var major, minor C.OM_uint32
@@ -544,6 +550,7 @@ func ReleaseCred(credHandle CredHandle) (majorStatus, minorStatus uint32) {
 	return
 }
 
+/* InquireCred() reads information about a credential handle, or the default acceptor credentials if credHandle is nil. */
 func InquireCred(credHandle CredHandle) (majorStatus, minorStatus uint32, credName InternalName, lifetimeRec, credUsage uint32, mechSet []asn1.ObjectIdentifier) {
 	handle := C.gss_cred_id_t(credHandle)
 	name := C.gss_name_t(nil)
@@ -563,6 +570,7 @@ func InquireCred(credHandle CredHandle) (majorStatus, minorStatus uint32, credNa
 	return
 }
 
+/* AddCred() obtains credentials specific to a particular mechanism, optionally merging them with already-obtained credentials (if outputCredHandle is not nil) or storing them in a new credential handle. */
 func AddCred(credHandle CredHandle, desiredName InternalName, desiredMech asn1.ObjectIdentifier, initiatorTimeReq, acceptorTimeReq, credUsage uint32, outputCredHandle CredHandle) (majorStatus, minorStatus uint32, outputCredHandleRec CredHandle, actualMechs []asn1.ObjectIdentifier, initiatorTimeRec, acceptorTimeRec uint32) {
 	handle := C.gss_cred_id_t(credHandle)
 	name := C.gss_name_t(desiredName)
@@ -587,6 +595,7 @@ func AddCred(credHandle CredHandle, desiredName InternalName, desiredMech asn1.O
 	return
 }
 
+/* InquireCredByMech() obtains information about mechanism-specific credentials. */
 func InquireCredByMech(credHandle CredHandle, mechType asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, credName InternalName, initiatorLifetimeRec, acceptorLifetimeRec, credUsage uint32) {
 	handle := C.gss_cred_id_t(credHandle)
 	mech := oidToCOid(mechType)
@@ -674,10 +683,12 @@ func flagsToFlags(flags C.OM_uint32) (recFlags Flags) {
 	return
 }
 
+/* FlagsToRaw returns the integer representation of the flags structure, as would typically be used by C implementations.  It is here mainly to aid in running diagnostics. */
 func FlagsToRaw(flags Flags) uint32 {
 	return uint32(flagsToInt(flags))
 }
 
+/* Initialize a security context with a peer named by targName, optionally specifying a requested GSSAPI mechanism.  If the application expects to use confidentiality or integrity-checking functionality, they should be specified in reqFlags.  If the returned majorStatus is gss.S_CONTINUE_NEEDED, the function should be called again using the same contextHandle, but with a new token obtained from the peer.  This may need to be done an unknown number of times.  Any output tokens produced (including when the returned majorStatus is gss.S_COMPLETE) should be sent to the peer.  The context is successfully set up when the returned majorStatus is gss.S_COMPLETE.  If contextHandle is not nil, it should eventually be freed using gss.DeleteSecContext(). */
 func InitSecContext(claimantCredHandle CredHandle, contextHandle *ContextHandle, targName InternalName, mechType asn1.ObjectIdentifier, reqFlags Flags, lifetimeReq uint32, chanBindings *ChannelBindings, inputToken []byte) (majorStatus, minorStatus uint32, mechTypeRec asn1.ObjectIdentifier, outputToken []byte, recFlags Flags, transState, protReadyState bool, lifetimeRec uint32) {
 	handle := C.gss_cred_id_t(claimantCredHandle)
 	ctx := C.gss_ctx_id_t(*contextHandle)
@@ -719,6 +730,7 @@ func InitSecContext(claimantCredHandle CredHandle, contextHandle *ContextHandle,
 	return
 }
 
+/* Accept a security context from a peer, using the specified acceptor credentials, or the default acceptor credentials if acceptorCredHandle is nil.  If the returned majorStatus is gss.S_CONTINUE_NEEDED, the function should be called again using the same contextHandle, but with a new token obtained from the peer.  This may need to be done an unknown number of times.  Any output tokens produced (including when the returned majorStatus is gss.S_COMPLETE) should be sent to the peer.  The context is successfully set up when the returned majorStatus is gss.S_COMPLETE.  If contextHandle is not nil, it should eventually be freed using gss.DeleteSecContext().  If srcName is not nil, it should eventually be freed using gss.ReleaseName().  If delegatedCredHandle is not nil, it should also be freed. */
 func AcceptSecContext(acceptorCredHandle CredHandle, contextHandle *ContextHandle, chanBindings *ChannelBindings, inputToken []byte) (majorStatus, minorStatus uint32, srcName InternalName, mechType asn1.ObjectIdentifier, recFlags Flags, transState, protReadyState bool, lifetimeRec uint32, delegatedCredHandle CredHandle, outputToken []byte) {
 	handle := C.gss_cred_id_t(acceptorCredHandle)
 	ctx := C.gss_ctx_id_t(*contextHandle)
@@ -758,6 +770,7 @@ func AcceptSecContext(acceptorCredHandle CredHandle, contextHandle *ContextHandl
 	return
 }
 
+/* DeleteSecContext() frees resources associated with a security context which is no longer needed.  If an outputContextToken is produced, the calling application should attempt to send it to the peer to pass to ProcessContextToken(). */
 func DeleteSecContext(contextHandle ContextHandle) (majorStatus, minorStatus uint32, outputContextToken []byte) {
 	handle := C.gss_ctx_id_t(contextHandle)
 	var major, minor C.OM_uint32
@@ -774,6 +787,7 @@ func DeleteSecContext(contextHandle ContextHandle) (majorStatus, minorStatus uin
 	return
 }
 
+/* ProcessContextToken() processes a context token which was created using DeleteSecContext().  It is not usually used, and is included for backward compatibility. */
 func ProcessContextToken(contextHandle ContextHandle, contextToken []byte) (majorStatus, minorStatus uint32) {
 	handle := C.gss_ctx_id_t(contextHandle)
 	var major, minor C.OM_uint32
@@ -790,6 +804,7 @@ func ProcessContextToken(contextHandle ContextHandle, contextToken []byte) (majo
 	return
 }
 
+/* ContextTime() returns the amount of time for which an already-established security context will remain valid. */
 func ContextTime(contextHandle ContextHandle) (majorStatus, minorStatus, lifetimeRec uint32) {
 	handle := C.gss_ctx_id_t(contextHandle)
 	var major, minor, lifetime C.OM_uint32
@@ -802,6 +817,7 @@ func ContextTime(contextHandle ContextHandle) (majorStatus, minorStatus, lifetim
 	return
 }
 
+/* OidToStr() converts an OID to a displayable form preferred by the GSSAPI library, which may differ from the default representation returned by oid's String() method. */
 func OidToStr(oid asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, text string) {
 	id := oidToCOid(oid)
 	var major, minor C.OM_uint32
@@ -819,6 +835,7 @@ func OidToStr(oid asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, text 
 	return
 }
 
+/* InquireContext() returns information about an already-established security context.  The returned srcName and targName values should be released using gss.ReleaseName(). */
 func InquireContext(contextHandle ContextHandle) (majorStatus, minorStatus uint32, srcName, targName InternalName, lifetimeRec uint32, mechType asn1.ObjectIdentifier, recFlags Flags, transState, protReadyState, locallyInitiated, open bool) {
 	handle := C.gss_ctx_id_t(contextHandle)
 	var major, minor, lifetime C.OM_uint32
@@ -850,6 +867,7 @@ func InquireContext(contextHandle ContextHandle) (majorStatus, minorStatus uint3
 	return
 }
 
+/* WrapSizeLimit() returns the maximum size of plaintext which the underlying mechanism can accept if it must guarantee that wrapped tokens must be less than or equal to outputSize bytes. */
 func WrapSizeLimit(contextHandle ContextHandle, confReqFlag bool, qopReq uint32, outputSize uint32) (majorStatus, minorStatus, maxInputSize uint32) {
 	handle := C.gss_ctx_id_t(contextHandle)
 	qop := C.gss_qop_t(qopReq)
@@ -869,6 +887,7 @@ func WrapSizeLimit(contextHandle ContextHandle, confReqFlag bool, qopReq uint32,
 	return
 }
 
+/* ExportSecContext() serializes all state data related to an established security context.  Upon return, contextHandle will have become invalid. */
 func ExportSecContext(contextHandle ContextHandle) (majorStatus, minorStatus uint32, interProcessToken []byte) {
 	handle := C.gss_ctx_id_t(contextHandle)
 	var token C.gss_buffer_desc
@@ -884,6 +903,7 @@ func ExportSecContext(contextHandle ContextHandle) (majorStatus, minorStatus uin
 	return
 }
 
+/* ImportSecContext() deserializes all state data related to an established security context.  The returned contextHandle can be used immediately. */
 func ImportSecContext(interprocessToken []byte) (majorStatus, minorStatus uint32, contextHandle ContextHandle) {
 	token := bytesToBuffer(interprocessToken)
 	var major, minor C.OM_uint32
@@ -897,6 +917,7 @@ func ImportSecContext(interprocessToken []byte) (majorStatus, minorStatus uint32
 	return
 }
 
+/* GetMIC() computes a signature over the passed-in message. */
 func GetMIC(contextHandle ContextHandle, qopReq uint32, message []byte) (majorStatus, minorStatus uint32, perMessageToken []byte) {
 	handle := C.gss_ctx_id_t(contextHandle)
 	qop := C.gss_qop_t(qopReq)
@@ -916,6 +937,7 @@ func GetMIC(contextHandle ContextHandle, qopReq uint32, message []byte) (majorSt
 	return
 }
 
+/* VerifyMIC() checks a passed-in signature over a passed-in message. */
 func VerifyMIC(contextHandle ContextHandle, message, perMessageToken []byte) (majorStatus, minorStatus, qopState uint32) {
 	handle := C.gss_ctx_id_t(contextHandle)
 	msg := bytesToBuffer(message)
@@ -931,6 +953,7 @@ func VerifyMIC(contextHandle ContextHandle, message, perMessageToken []byte) (ma
 	return
 }
 
+/* Wrap() produces either an integrity-protected or confidential token containing the passed-in inputMessage. */
 func Wrap(contextHandle ContextHandle, confReq bool, qopReq uint32, inputMessage []byte) (majorStatus, minorStatus uint32, confState bool, outputMessage []byte) {
 	handle := C.gss_ctx_id_t(contextHandle)
 	qop := C.gss_qop_t(qopReq)
@@ -955,6 +978,7 @@ func Wrap(contextHandle ContextHandle, confReq bool, qopReq uint32, inputMessage
 	return
 }
 
+/* Unwrap() accepts an integrity-protected or confidential token and returns the plaintext, along with an indication of whether or not the input token was confidential (encrypted). */
 func Unwrap(contextHandle ContextHandle, inputMessage []byte) (majorStatus, minorStatus uint32, confState bool, qopState uint32, outputMessage []byte) {
 	handle := C.gss_ctx_id_t(contextHandle)
 	wrapped := bytesToBuffer(inputMessage)
@@ -976,6 +1000,7 @@ func Unwrap(contextHandle ContextHandle, inputMessage []byte) (majorStatus, mino
 	return
 }
 
+/* DisplayStatus() returns a printable representation of a mechanism-specific major or minor status code. */
 func DisplayStatus(statusValue uint32, statusType int, mechType asn1.ObjectIdentifier) (majorStatus, minorStatus, messageContext uint32, statusString string) {
 	value := C.OM_uint32(statusValue)
 	stype := C.int(statusType)
@@ -996,6 +1021,7 @@ func DisplayStatus(statusValue uint32, statusType int, mechType asn1.ObjectIdent
 	return
 }
 
+/* IndicateMechs() returns a list of the available security mechanism OIDs. */
 func IndicateMechs() (majorStatus, minorStatus uint32, mechSet []asn1.ObjectIdentifier) {
 	var major, minor C.OM_uint32
 	var mechs C.gss_OID_set
@@ -1008,6 +1034,7 @@ func IndicateMechs() (majorStatus, minorStatus uint32, mechSet []asn1.ObjectIden
 	return
 }
 
+/* CompareName() compares two names to see if they refer to the same identity. */
 func CompareName(name1, name2 InternalName) (majorStatus, minorStatus uint32, nameEqual bool) {
 	n1 := C.gss_name_t(name1)
 	n2 := C.gss_name_t(name2)
@@ -1022,6 +1049,7 @@ func CompareName(name1, name2 InternalName) (majorStatus, minorStatus uint32, na
 	return
 }
 
+/* DisplayName() returns a printable representation of name, along with the type of name that it represents. */
 func DisplayName(name InternalName) (majorStatus, minorStatus uint32, nameString string, nameType asn1.ObjectIdentifier) {
 	n := C.gss_name_t(name)
 	var major, minor C.OM_uint32
@@ -1043,6 +1071,7 @@ func DisplayName(name InternalName) (majorStatus, minorStatus uint32, nameString
 	return
 }
 
+/* ImportName() creates an InternalName from an external representation and name type, which is often gss.C_NT_HOSTBASED_SERVICE. */
 func ImportName(inputName string, nameType asn1.ObjectIdentifier) (majorStatus, minorStatus uint32, outputName InternalName) {
 	ntype := oidToCOid(nameType)
 	var major, minor C.OM_uint32
@@ -1062,6 +1091,7 @@ func ImportName(inputName string, nameType asn1.ObjectIdentifier) (majorStatus, 
 	return
 }
 
+/* ReleaseName() frees resources associated with an InternalName after it is no longer needed. */
 func ReleaseName(inputName InternalName) (majorStatus, minorStatus uint32) {
 	name := C.gss_name_t(inputName)
 	var major, minor C.OM_uint32
