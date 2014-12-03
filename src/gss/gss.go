@@ -78,21 +78,6 @@ const (
 	C_IDENTIFY_FLAG       = C.GSS_C_IDENTIFY_FLAG
 	C_EXTENDED_ERROR_FLAG = C.GSS_C_EXTENDED_ERROR_FLAG
 
-	//	C_NO_IOV_BUFFER = C.GSS_C_NO_IOV_BUFFER
-
-	IOV_BUFFER_TYPE_EMPTY       = C.GSS_IOV_BUFFER_TYPE_EMPTY
-	IOV_BUFFER_TYPE_DATA        = C.GSS_IOV_BUFFER_TYPE_DATA
-	IOV_BUFFER_TYPE_HEADER      = C.GSS_IOV_BUFFER_TYPE_HEADER
-	IOV_BUFFER_TYPE_MECH_PARAMS = C.GSS_IOV_BUFFER_TYPE_MECH_PARAMS
-	IOV_BUFFER_TYPE_TRAILER     = C.GSS_IOV_BUFFER_TYPE_TRAILER
-	IOV_BUFFER_TYPE_PADDING     = C.GSS_IOV_BUFFER_TYPE_PADDING
-	IOV_BUFFER_TYPE_STREAM      = C.GSS_IOV_BUFFER_TYPE_STREAM
-	IOV_BUFFER_TYPE_SIGN_ONLY   = C.GSS_IOV_BUFFER_TYPE_SIGN_ONLY
-	IOV_BUFFER_TYPE_MIC_TOKEN   = C.GSS_IOV_BUFFER_TYPE_MIC_TOKEN
-	IOV_BUFFER_FLAG_MASK        = C.GSS_IOV_BUFFER_FLAG_MASK
-	IOV_BUFFER_FLAG_ALLOCATE    = C.GSS_IOV_BUFFER_FLAG_ALLOCATE
-	IOV_BUFFER_FLAG_ALLOCATED   = C.GSS_IOV_BUFFER_FLAG_ALLOCATED
-
 	// C_NO_CRED_STORE
 
 	// credUsage values passed to AcquireCred(), AddCred(), StoreCred() and related functions.
@@ -236,7 +221,7 @@ var (
 	C_MA_COMPRESS       = coidToOid(*C.GSS_C_MA_COMPRESS)
 	C_MA_CTX_TRANS      = coidToOid(*C.GSS_C_MA_CTX_TRANS)
 
-	// Recognized mechanisms.
+	// Some mechanisms.
 	Mech_krb5          = coidToOid(*C.gss_mech_krb5)
 	Mech_krb5_old      = coidToOid(*C.gss_mech_krb5_old)
 	Mech_krb5_wrong    = coidToOid(*C.gss_mech_krb5_wrong)
@@ -267,10 +252,6 @@ type ChannelBindings struct {
 /* Flags describe requested parameters for a context passed to InitSecContext(), or the parameters of an established context as returned by AcceptSecContext() or InquireContext(). */
 type Flags struct {
 	Deleg, DelegPolicy, Mutual, Replay, Sequence, Anon, Conf, Integ, Trans, ProtReady bool
-}
-
-type IOV struct {
-	data []byte
 }
 
 /* bytesToBuffer populates a gss_buffer_t with a borrowed reference to the contents of the slice. */
@@ -1493,9 +1474,6 @@ func MechInvoke(desiredMech, desiredObject asn1.ObjectIdentifier, value *[]byte)
 	return
 }
 
-func WrapAEAD(contextHandle ContextHandle, confReq bool, qopReq uint32, inputAssociated, inputPayload []byte) (majorStatus, minorStatus uint32, confState bool, outputMessage []byte)
-func UnwrapAEAD(contextHandle ContextHandle, inputMessage, inputAssociated []byte) (majorStatus, minorStatus uint32, outputPayload []byte, confState bool, qopState uint32)
-
 func CompleteAuthToken(contextHandle ContextHandle, inputMessage []byte) (majorStatus, minorStatus uint32) {
 	handle := C.gss_ctx_id_t(contextHandle)
 	msg := bytesToBuffer(inputMessage)
@@ -1507,12 +1485,6 @@ func CompleteAuthToken(contextHandle ContextHandle, inputMessage []byte) (majorS
 	minorStatus = uint32(minor)
 	return
 }
-
-func WrapIOV(contextHandle ContextHandle, confReq bool, qopReq uint32, messages []IOV) (majorStatus, minorStatus uint32, confState bool)
-func UnwrapIOV(contextHandle ContextHandle, messages []IOV) (majorStatus, minorStatus uint32, confState bool, qopState uint32)
-func WrapIOVLength(contextHandle ContextHandle, confReq bool, qopReq uint32, messages []IOV) (majorStatus, minorStatus uint32, confState bool)
-func GetMICIOV(contextHandle ContextHandle, qopReq uint32, messages []IOV) (majorStatus, minorStatus uint32)
-func VerifyMICIOV(contextHandle ContextHandle, messages []IOV) (majorStatus, minorStatus uint32, qopState uint32)
 
 /* AcquireCredImpersonateName() uses impersonatorCredHandle to acquire credentials which can be used to impersonate desiredName and returns a new outputCredHandle. */
 func AcquireCredImpersonateName(impersonatorCredHandle CredHandle, desiredName InternalName, timeReq uint32, desiredMechs []asn1.ObjectIdentifier, credUsage uint32) (majorStatus, minorStatus uint32, outputCredHandle CredHandle, actualMechs []asn1.ObjectIdentifier, timeRec uint32) {

@@ -3,4 +3,3 @@ Package gss provides bindings for a C implementation of GSS-API (specifically, M
 In broad strokes:
 * gss\_buffer\_t is replaced by either []byte or string
 * OIDs and OID sets are passed around as encoding/asn1 ObjectIdentifiers and arrays of encoding/asn1 ObjectIdentifiers
-* IOV and AEAD function and types are declared but functions are not currently defined
