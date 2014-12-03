@@ -89,30 +89,6 @@ const (
 	C_GSS_CODE  = C.GSS_C_GSS_CODE
 	C_MECH_CODE = C.GSS_C_MECH_CODE
 
-	C_AF_UNSPEC    = C.GSS_C_AF_UNSPEC
-	C_AF_LOCAL     = C.GSS_C_AF_LOCAL
-	C_AF_INET      = C.GSS_C_AF_INET
-	C_AF_IMPLINK   = C.GSS_C_AF_IMPLINK
-	C_AF_PUP       = C.GSS_C_AF_PUP
-	C_AF_CHAOS     = C.GSS_C_AF_CHAOS
-	C_AF_NS        = C.GSS_C_AF_NS
-	C_AF_NBS       = C.GSS_C_AF_NBS
-	C_AF_ECMA      = C.GSS_C_AF_ECMA
-	C_AF_DATAKIT   = C.GSS_C_AF_DATAKIT
-	C_AF_CCITT     = C.GSS_C_AF_CCITT
-	C_AF_SNA       = C.GSS_C_AF_SNA
-	C_AF_DECnet    = C.GSS_C_AF_DECnet
-	C_AF_DLI       = C.GSS_C_AF_DLI
-	C_AF_LAT       = C.GSS_C_AF_LAT
-	C_AF_HYLINK    = C.GSS_C_AF_HYLINK
-	C_AF_APPLETALK = C.GSS_C_AF_APPLETALK
-	C_AF_BSC       = C.GSS_C_AF_BSC
-	C_AF_DSS       = C.GSS_C_AF_DSS
-	C_AF_OSI       = C.GSS_C_AF_OSI
-	C_AF_NETBIOS   = C.GSS_C_AF_NETBIOS
-	C_AF_X25       = C.GSS_C_AF_X25
-	C_AF_NULLADDR  = C.GSS_C_AF_NULLADDR
-
 	//	C_NO_NAME = nil
 	//	C_NO_BUFFER = nil
 	//	C_NO_OID = nil
@@ -245,8 +221,13 @@ type ContextHandle C.gss_ctx_id_t
 type InternalName C.gss_name_t
 
 type ChannelBindings struct {
-	initiatorAddressType, acceptorAddressType          uint32
-	initiatorAddress, acceptorAddress, applicationData []byte
+	// These four fields are deprecated.
+	//initiatorAddressType uint32
+	//acceptorAddressType          uint32
+	//initiatorAddress []byte
+	//acceptorAddress []byte
+
+	ApplicationData []byte
 }
 
 /* Flags describe requested parameters for a context passed to InitSecContext(), or the parameters of an established context as returned by AcceptSecContext() or InquireContext(). */
@@ -474,11 +455,7 @@ func bindingsToCBindings(bindings *ChannelBindings) (cbindings C.gss_channel_bin
 	if bindings == nil {
 		return nil
 	}
-	cbindings.initiator_addrtype = C.OM_uint32(bindings.initiatorAddressType)
-	cbindings.initiator_address = bytesToBuffer(bindings.initiatorAddress)
-	cbindings.acceptor_addrtype = C.OM_uint32(bindings.acceptorAddressType)
-	cbindings.acceptor_address = bytesToBuffer(bindings.acceptorAddress)
-	cbindings.application_data = bytesToBuffer(bindings.applicationData)
+	cbindings.application_data = bytesToBuffer(bindings.ApplicationData)
 	return
 }
 
@@ -486,11 +463,7 @@ func cbindingsToBindings(cbindings C.gss_channel_bindings_t) (bindings *ChannelB
 	if cbindings == nil {
 		return nil
 	}
-	bindings.initiatorAddressType = uint32(cbindings.initiator_addrtype)
-	bindings.initiatorAddress = bufferToBytes(cbindings.initiator_address)
-	bindings.acceptorAddressType = uint32(cbindings.acceptor_addrtype)
-	bindings.acceptorAddress = bufferToBytes(cbindings.acceptor_address)
-	bindings.applicationData = bufferToBytes(cbindings.application_data)
+	bindings.ApplicationData = bufferToBytes(cbindings.application_data)
 	return
 }
 
