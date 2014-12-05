@@ -226,7 +226,6 @@ type ChannelBindings struct {
 	//acceptorAddressType          uint32
 	//initiatorAddress []byte
 	//acceptorAddress []byte
-
 	ApplicationData []byte
 }
 
