@@ -110,7 +110,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		flags = gss.Flags{Deleg: delegate, Sequence: seq, Replay: !noreplay, Conf: !noenc, Integ: !nomic, Mutual: !nomutual}
 		for true {
 			/* Start/continue. */
-			major, minor, _, token, flags, _, _, _ = gss.InitSecContext(cred, &ctx, name, mech, flags, 0, nil, token)
+			major, minor, _, token, flags, _, _, _ = gss.InitSecContext(cred, &ctx, name, mech, flags, gss.C_INDEFINITE, nil, token)
 			if major != gss.S_COMPLETE && major != gss.S_CONTINUE_NEEDED {
 				misc.DisplayError("initializing security context", major, minor, &mech)
 				gss.DeleteSecContext(ctx)
