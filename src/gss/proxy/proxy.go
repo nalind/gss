@@ -2,13 +2,18 @@ package proxy
 
 import "bytes"
 import "encoding/asn1"
+import "fmt"
 import "net"
+import "strconv"
+import "strings"
 import "github.com/davecgh/go-xdr/xdr2"
 
 const (
+	/* The server we're using. */
 	intGSSPROXY_PROG = 400112
 	intGSSPROXY_VERS = 1
 
+	/* Procedures. */
 	intNULL                  = 0
 	intINDICATE_MECHS        = 1
 	intGET_CALL_CONTEXT      = 2
@@ -26,14 +31,172 @@ const (
 	intUNWRAP                = 14
 	intWRAP_SIZE_LIMIT       = 15
 
-	/* Credential Usage values to be passed to ExportCred() and StoreCred(). */
-	GSSX_C_INITIATE = 1
-	GSSX_C_ACCEPT   = 2
-	GSSX_C_BOTH     = 3
+	/* Request the highest-available lifetime. */
+	C_INDEFINITE = 0xffffffff
 
+	/* Credential Usage values to be passed to ExportCred() and StoreCred(). */
+	C_INITIATE = 1
+	C_ACCEPT   = 2
+	C_BOTH     = 3
+
+	/* Ways to distinguish what's being released. */
 	intGSSX_C_HANDLE_SEC_CTX = 0
 	intGSSX_C_HANDLE_CRED    = 1
+
+	/* Context flags. */
+	intGSS_C_DELEG_FLAG        = 1
+	intGSS_C_MUTUAL_FLAG       = 2
+	intGSS_C_REPLAY_FLAG       = 4
+	intGSS_C_SEQUENCE_FLAG     = 8
+	intGSS_C_CONF_FLAG         = 16
+	intGSS_C_INTEG_FLAG        = 32
+	intGSS_C_ANON_FLAG         = 64
+	intGSS_C_PROT_READY_FLAG   = 128
+	intGSS_C_TRANS_FLAG        = 256
+	intGSS_C_DELEG_POLICY_FLAG = 32768
+
+	/* Status codes. */
+	S_COMPLETE = 0
+
+	intGSS_C_CALLING_ERROR_OFFSET = 24
+	intGSS_C_ROUTINE_ERROR_OFFSET = 16
+	intGSS_C_SUPPLEMENTARY_OFFSET = 0
+
+	S_CONTINUE_NEEDED = (1 << (intGSS_C_SUPPLEMENTARY_OFFSET + 0))
+	S_DUPLICATE_TOKEN = (1 << (intGSS_C_SUPPLEMENTARY_OFFSET + 1))
+	S_OLD_TOKEN       = (1 << (intGSS_C_SUPPLEMENTARY_OFFSET + 2))
+	S_UNSEQ_TOKEN     = (1 << (intGSS_C_SUPPLEMENTARY_OFFSET + 3))
+	S_GAP_TOKEN       = (1 << (intGSS_C_SUPPLEMENTARY_OFFSET + 4))
+
+	S_BAD_MECH             = (1 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_BAD_NAME             = (2 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_BAD_NAMETYPE         = (3 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_BAD_BINDINGS         = (4 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_BAD_STATUS           = (5 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_BAD_SIG              = (6 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_NO_CRED              = (7 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_NO_CONTEXT           = (8 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_DEFECTIVE_TOKEN      = (9 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_DEFECTIVE_CREDENTIAL = (10 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_CREDENTIALS_EXPIRED  = (11 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_CONTEXT_EXPIRED      = (12 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_FAILURE              = (13 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_BAD_QOP              = (14 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_UNAUTHORIZED         = (15 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_UNAVAILABLE          = (16 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_DUPLICATE_ELEMENT    = (17 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_NAME_NOT_MN          = (18 << intGSS_C_ROUTINE_ERROR_OFFSET)
+	S_BAD_MECH_ATTR        = (19 << intGSS_C_ROUTINE_ERROR_OFFSET)
+
+	/* Default quality of protection. */
+	C_QOP_DEFAULT = 0
 )
+
+var (
+	/* Known name types. */
+	NT_USER_NAME           = parseOid("1.2.840.113554.1.2.1.1")
+	NT_MACHINE_UID_NAME    = parseOid("1.2.840.113554.1.2.1.2")
+	NT_STRING_UID_NAME     = parseOid("1.2.840.113554.1.2.1.3")
+	NT_HOSTBASED_SERVICE   = parseOid("1.2.840.113554.1.2.1.4")
+	NT_HOSTBASED_SERVICE_X = parseOid("1.3.6.1.5.6.2")
+	NT_ANONYMOUS           = parseOid("1.3.6.1.5.6.3")
+	NT_EXPORT_NAME         = parseOid("1.3.6.1.5.6.4")
+)
+
+func parseOid(oids string) (oid asn1.ObjectIdentifier) {
+	components := strings.Split(oids, ".")
+	if len(components) > 0 {
+		oid = make([]int, len(components))
+		for i, component := range components {
+			val, err := strconv.Atoi(component)
+			if err != nil {
+				fmt.Printf("Error parsing OID \"%s\".\n", oids)
+				oid = nil
+				return
+			}
+			oid[i] = val
+		}
+	}
+	return
+}
+
+/* Flags describe requested parameters for a context passed to InitSecContext(), or the parameters of an established context as returned by AcceptSecContext(). */
+type Flags struct {
+	Deleg, DelegPolicy, Mutual, Replay, Sequence, Anon, Conf, Integ, Trans, ProtReady bool
+}
+
+func uncookFlags(flags Flags) (recFlags uint64) {
+	if flags.Deleg {
+		recFlags |= intGSS_C_DELEG_FLAG
+	}
+	if flags.DelegPolicy {
+		recFlags |= intGSS_C_DELEG_POLICY_FLAG
+	}
+	if flags.Mutual {
+		recFlags |= intGSS_C_MUTUAL_FLAG
+	}
+	if flags.Replay {
+		recFlags |= intGSS_C_REPLAY_FLAG
+	}
+	if flags.Sequence {
+		recFlags |= intGSS_C_SEQUENCE_FLAG
+	}
+	if flags.Anon {
+		recFlags |= intGSS_C_ANON_FLAG
+	}
+	if flags.Conf {
+		recFlags |= intGSS_C_CONF_FLAG
+	}
+	if flags.Integ {
+		recFlags |= intGSS_C_INTEG_FLAG
+	}
+	if flags.Trans {
+		recFlags |= intGSS_C_TRANS_FLAG
+	}
+	if flags.ProtReady {
+		recFlags |= intGSS_C_PROT_READY_FLAG
+	}
+	return
+}
+
+func cookFlags(flags uint64) (recFlags Flags) {
+	if flags&intGSS_C_DELEG_FLAG != 0 {
+		recFlags.Deleg = true
+	}
+	if flags&intGSS_C_DELEG_POLICY_FLAG != 0 {
+		recFlags.DelegPolicy = true
+	}
+	if flags&intGSS_C_MUTUAL_FLAG != 0 {
+		recFlags.Mutual = true
+	}
+	if flags&intGSS_C_REPLAY_FLAG != 0 {
+		recFlags.Replay = true
+	}
+	if flags&intGSS_C_SEQUENCE_FLAG != 0 {
+		recFlags.Sequence = true
+	}
+	if flags&intGSS_C_ANON_FLAG != 0 {
+		recFlags.Anon = true
+	}
+	if flags&intGSS_C_CONF_FLAG != 0 {
+		recFlags.Conf = true
+	}
+	if flags&intGSS_C_INTEG_FLAG != 0 {
+		recFlags.Integ = true
+	}
+	if flags&intGSS_C_TRANS_FLAG != 0 {
+		recFlags.Trans = true
+	}
+	if flags&intGSS_C_PROT_READY_FLAG != 0 {
+		recFlags.ProtReady = true
+	}
+	return
+}
+
+/* FlagsToRaw returns the integer representation of the flags structure, as would typically be used by C implementations.  It is here mainly to aid in running diagnostics. */
+func FlagsToRaw(flags Flags) uint64 {
+	return uncookFlags(flags)
+}
 
 func makeTagAndLength(tag, length int) (l []byte) {
 	var count, bits int
@@ -453,7 +616,8 @@ type SecCtx struct {
 	NeedsRelease                bool
 	Mech                        asn1.ObjectIdentifier
 	SrcName, TargName           Name
-	Lifetime, CtxFlags          uint64
+	Lifetime                    uint64
+	Flags                       Flags
 	LocallyInitiated, Open      bool
 	Options                     []Option
 }
@@ -476,7 +640,7 @@ func uncookSecCtx(s SecCtx) (raw rawSecCtx, err error) {
 		return
 	}
 	raw.Lifetime = s.Lifetime
-	raw.CtxFlags = s.CtxFlags
+	raw.CtxFlags = uncookFlags(s.Flags)
 	raw.LocallyInitiated = s.LocallyInitiated
 	raw.Open = s.Open
 	raw.Options = s.Options
@@ -501,7 +665,7 @@ func cookSecCtx(c rawSecCtx) (cooked SecCtx, err error) {
 		return
 	}
 	cooked.Lifetime = c.Lifetime
-	cooked.CtxFlags = c.CtxFlags
+	cooked.Flags = cookFlags(c.CtxFlags)
 	cooked.LocallyInitiated = c.LocallyInitiated
 	cooked.Open = c.Open
 	cooked.Options = c.Options
@@ -609,7 +773,7 @@ func GetCallContext(conn *net.Conn, callCtx CallCtx, options []Option) (results 
 
 type ImportAndCanonNameResults struct {
 	Status  Status
-	Name    Name
+	Name    *Name
 	Options []Option
 }
 
@@ -617,22 +781,30 @@ type ImportAndCanonNameResults struct {
 func ImportAndCanonName(conn *net.Conn, callCtx CallCtx, name Name, mech asn1.ObjectIdentifier, nameAttrs []NameAttr, options []Option) (results ImportAndCanonNameResults, err error) {
 	var args struct {
 		CallCtx   CallCtx
-		Name      rawName
-		NameAttrs []NameAttr
+		InputName rawName
 		Mech      []byte
+		NameAttrs []NameAttr
 		Options   []Option
 	}
-	var res ImportAndCanonNameResults
+	var res struct {
+		Status     rawStatus
+		OutputName []rawName
+		Options    []Option
+	}
+	var cooked ImportAndCanonNameResults
+	var ntmp Name
 	var cbuf, rbuf bytes.Buffer
 
 	args.CallCtx = callCtx
-	args.Name, err = uncookName(name)
+	args.InputName, err = uncookName(name)
 	if err != nil {
 		return
 	}
-	args.Mech, err = uncookOid(mech)
-	if err != nil {
-		return
+	if len(mech) > 0 {
+		args.Mech, err = uncookOid(mech)
+		if err != nil {
+			return
+		}
 	}
 	args.NameAttrs = nameAttrs
 	args.Options = options
@@ -650,8 +822,20 @@ func ImportAndCanonName(conn *net.Conn, callCtx CallCtx, name Name, mech asn1.Ob
 	if err != nil {
 		return
 	}
+	cooked.Status, err = cookStatus(res.Status)
+	if err != nil {
+		return
+	}
+	if len(res.OutputName) > 0 {
+		ntmp, err = cookName(res.OutputName[0])
+		if err != nil {
+			return
+		}
+		cooked.Name = &ntmp
+	}
+	cooked.Options = res.Options
 
-	results = res
+	results = cooked
 	return
 }
 
@@ -670,7 +854,13 @@ func ExportCred(conn *net.Conn, callCtx CallCtx, cred Cred, credUsage int, optio
 		CredUsage int
 		Options   []Option
 	}
-	var res ExportCredResults
+	var res struct {
+		Status    rawStatus
+		CredUsage int
+		Exported  []byte
+		Options   []Option
+	}
+	var cooked ExportCredResults
 	var cbuf, rbuf bytes.Buffer
 
 	args.CallCtx = callCtx
@@ -695,13 +885,20 @@ func ExportCred(conn *net.Conn, callCtx CallCtx, cred Cred, credUsage int, optio
 		return
 	}
 
-	results = res
+	cooked.Status, err = cookStatus(res.Status)
+	if err != nil {
+		return
+	}
+	cooked.CredUsage = res.CredUsage
+	cooked.Exported = res.Exported
+	cooked.Options = res.Options
+	results = cooked
 	return
 }
 
 type ImportCredResults struct {
 	Status  Status
-	Cred    Cred
+	Cred    *Cred
 	Options []Option
 }
 
@@ -712,8 +909,14 @@ func ImportCred(conn *net.Conn, callCtx CallCtx, exportedCred []byte, options []
 		ExportedCred []byte
 		Options      []Option
 	}
-	var res ImportCredResults
+	var res struct {
+		Status  rawStatus
+		Cred    []rawCred
+		Options []Option
+	}
+	var cooked ImportCredResults
 	var cbuf, rbuf bytes.Buffer
+	var ctmp Cred
 
 	args.CallCtx = callCtx
 	args.ExportedCred = exportedCred
@@ -733,7 +936,114 @@ func ImportCred(conn *net.Conn, callCtx CallCtx, exportedCred []byte, options []
 		return
 	}
 
-	results = res
+	cooked.Status, err = cookStatus(res.Status)
+	if err != nil {
+		return
+	}
+	if len(res.Cred) > 0 {
+		ctmp, err = cookCred(res.Cred[0])
+		if err != nil {
+			return
+		}
+		cooked.Cred = &ctmp
+	}
+	cooked.Options = res.Options
+	results = cooked
+	return
+}
+
+type AcquireCredResults struct {
+	Status  Status
+	Cred    *Cred
+	Options []Option
+}
+
+/* AcquireCred adds credentials to a credential structure, possibly creating one. */
+func AcquireCred(conn *net.Conn, callCtx CallCtx, inputCredHandle *Cred, addCredToInputHandle bool, desiredName *Name, timeReq uint64, desiredMechs []asn1.ObjectIdentifier, credUsage int, initiatorTimeReq, acceptorTimeReq uint64, options []Option) (results AcquireCredResults, err error) {
+	var args struct {
+		CallCtx                           CallCtx
+		InputCredHandle                   []rawCred
+		AddCredToInputHandle              bool
+		DesiredName                       []rawName
+		TimeReq                           uint64
+		DesiredMechs                      [][]byte
+		CredUsage                         int
+		InitiatorTimeReq, AcceptorTimeReq uint64
+		Options                           []Option
+	}
+	var res struct {
+		Status  rawStatus
+		Cred    []rawCred
+		Options []Option
+	}
+	var cooked AcquireCredResults
+	var ctmp rawCred
+	var cctmp Cred
+	var ntmp rawName
+	var cbuf, rbuf bytes.Buffer
+
+	args.CallCtx = callCtx
+	if inputCredHandle != nil {
+		args.InputCredHandle = make([]rawCred, 1)
+		ctmp, err = uncookCred(*inputCredHandle)
+		if err != nil {
+			return
+		}
+		args.InputCredHandle[0] = ctmp
+	} else {
+		args.InputCredHandle = make([]rawCred, 0)
+	}
+	args.AddCredToInputHandle = addCredToInputHandle
+	if desiredName != nil {
+		args.DesiredName = make([]rawName, 1)
+		ntmp, err = uncookName(*desiredName)
+		if err != nil {
+			return
+		}
+		args.DesiredName[0] = ntmp
+	} else {
+		args.DesiredName = make([]rawName, 0)
+	}
+	args.TimeReq = timeReq
+	args.DesiredMechs = make([][]byte, len(desiredMechs))
+	for i, m := range desiredMechs {
+		args.DesiredMechs[i], err = uncookOid(m)
+		if err != nil {
+			return
+		}
+	}
+	args.CredUsage = credUsage
+	args.InitiatorTimeReq = initiatorTimeReq
+	args.AcceptorTimeReq = acceptorTimeReq
+	args.Options = options
+	_, err = xdr.Marshal(&cbuf, &args)
+	if err != nil {
+		return
+	}
+
+	err = CallRpc(conn, intGSSPROXY_PROG, intGSSPROXY_VERS, intACQUIRE_CRED, AUTH_NONE, cbuf.Bytes(), &rbuf)
+	if err != nil {
+		return
+	}
+
+	_, err = xdr.Unmarshal(&rbuf, &res)
+	if err != nil {
+		return
+	}
+	cooked.Status, err = cookStatus(res.Status)
+	if err != nil {
+		return
+	}
+	if len(res.Cred) > 0 {
+		cctmp, err = cookCred(res.Cred[0])
+		if err != nil {
+			return
+		}
+		cooked.Cred = &cctmp
+	}
+	cooked.Options = res.Options
+
+	results = cooked
 	return
 }
 
@@ -816,22 +1126,22 @@ type InitSecContextResults struct {
 }
 
 /* InitSecContext initiates a security context with a peer. */
-func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, targetName *Name, mechType asn1.ObjectIdentifier, reqFlags, timeReq uint64, inputToken *[]byte, options []Option) (results InitSecContextResults, err error) {
+func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, targetName *Name, mechType asn1.ObjectIdentifier, reqFlags Flags, timeReq uint64, inputToken []byte, options []Option) (results InitSecContextResults, err error) {
 	var args struct {
 		CallCtx           CallCtx
-		Ctx               *rawSecCtx
-		Cred              *rawCred
-		TargetName        *rawName
+		Ctx               []rawSecCtx
+		Cred              []rawCred
+		TargetName        []rawName
 		MechType          []byte
 		ReqFlags, TimeReq uint64
 		InputCB           []byte
-		InputToken        *[]byte
+		InputToken        [][]byte
 		Options           []Option
 	}
 	var res struct {
 		Status      rawStatus
-		Ctx         *rawSecCtx
-		OutputToken *[]byte
+		Ctx         []rawSecCtx
+		OutputToken [][]byte
 		Options     []Option
 	}
 	var stmp rawSecCtx
@@ -843,33 +1153,47 @@ func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, ta
 
 	args.CallCtx = callCtx
 	if ctx != nil {
+		args.Ctx = make([]rawSecCtx, 1)
 		stmp, err = uncookSecCtx(*ctx)
 		if err != nil {
 			return
 		}
-		args.Ctx = &stmp
+		args.Ctx[0] = stmp
+	} else {
+		args.Ctx = make([]rawSecCtx, 0)
 	}
 	if cred != nil {
+		args.Cred = make([]rawCred, 1)
 		ctmp, err = uncookCred(*cred)
 		if err != nil {
 			return
 		}
-		args.Cred = &ctmp
+		args.Cred[0] = ctmp
+	} else {
+		args.Cred = make([]rawCred, 0)
 	}
 	if targetName != nil {
+		args.TargetName = make([]rawName, 1)
 		ntmp, err = uncookName(*targetName)
 		if err != nil {
 			return
 		}
-		args.TargetName = &ntmp
+		args.TargetName[0] = ntmp
+	} else {
+		args.TargetName = make([]rawName, 0)
 	}
 	args.MechType, err = uncookOid(mechType)
 	if err != nil {
 		return
 	}
-	args.ReqFlags = reqFlags
+	args.ReqFlags = uncookFlags(reqFlags)
 	args.TimeReq = timeReq
-	args.InputToken = inputToken
+	if inputToken != nil {
+		args.InputToken = make([][]byte, 1)
+		args.InputToken[0] = inputToken
+	} else {
+		args.InputToken = make([][]byte, 0)
+	}
 	args.Options = options
 	_, err = xdr.Marshal(&cbuf, &args)
 	if err != nil {
@@ -889,14 +1213,16 @@ func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, ta
 	if err != nil {
 		return
 	}
-	if res.Ctx != nil {
-		sctmp, err = cookSecCtx(*res.Ctx)
+	if len(res.Ctx) > 0 {
+		sctmp, err = cookSecCtx(res.Ctx[0])
 		if err != nil {
 			return
 		}
 		cooked.Ctx = &sctmp
 	}
-	cooked.OutputToken = res.OutputToken
+	if len(res.OutputToken) > 0 {
+		cooked.OutputToken = &res.OutputToken[0]
+	}
 	cooked.Options = res.Options
 
 	results = cooked
@@ -912,21 +1238,21 @@ type AcceptSecContextResults struct {
 }
 
 /* AcceptSecContext accepts a security context initiated by a peer. */
-func AcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, inputToken *[]byte, retDelegCred bool, options []Option) (results AcceptSecContextResults, err error) {
+func AcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, inputToken []byte, retDelegCred bool, options []Option) (results AcceptSecContextResults, err error) {
 	var args struct {
 		CallCtx      CallCtx
-		Ctx          *rawSecCtx
-		Cred         *rawCred
-		InputToken   *[]byte
+		Ctx          []rawSecCtx
+		Cred         []rawCred
+		InputToken   []byte
 		InputCB      []byte
 		RetDelegCred bool
 		Options      []Option
 	}
 	var res struct {
 		Status              rawStatus
-		Ctx                 *rawSecCtx
-		OutputToken         *[]byte
-		DelegatedCredHandle *rawCred
+		Ctx                 []rawSecCtx
+		OutputToken         [][]byte
+		DelegatedCredHandle []rawCred
 		Options             []Option
 	}
 	var stmp rawSecCtx
@@ -938,18 +1264,24 @@ func AcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, 
 
 	args.CallCtx = callCtx
 	if ctx != nil {
+		args.Ctx = make([]rawSecCtx, 1)
 		stmp, err = uncookSecCtx(*ctx)
 		if err != nil {
 			return
 		}
-		args.Ctx = &stmp
+		args.Ctx[0] = stmp
+	} else {
+		args.Ctx = make([]rawSecCtx, 0)
 	}
 	if cred != nil {
+		args.Cred = make([]rawCred, 1)
 		ctmp, err = uncookCred(*cred)
 		if err != nil {
 			return
 		}
-		args.Cred = &ctmp
+		args.Cred[0] = ctmp
+	} else {
+		args.Cred = make([]rawCred, 0)
 	}
 	args.InputToken = inputToken
 	args.RetDelegCred = retDelegCred
@@ -972,16 +1304,18 @@ func AcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, 
 	if err != nil {
 		return
 	}
-	if res.Ctx != nil {
-		sctmp, err = cookSecCtx(*res.Ctx)
+	if len(res.Ctx) > 0 {
+		sctmp, err = cookSecCtx(res.Ctx[0])
 		if err != nil {
 			return
 		}
 		cooked.Ctx = &sctmp
 	}
-	cooked.OutputToken = res.OutputToken
-	if res.DelegatedCredHandle != nil {
-		dctmp, err = cookCred(*res.DelegatedCredHandle)
+	if len(res.OutputToken) > 0 {
+		cooked.OutputToken = &res.OutputToken[0]
+	}
+	if len(res.DelegatedCredHandle) > 0 {
+		dctmp, err = cookCred(res.DelegatedCredHandle[0])
 		if err != nil {
 			return
 		}
@@ -1102,9 +1436,9 @@ func GetMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, qopReq uint64, message 
 	}
 	var res struct {
 		Status      rawStatus
-		SecCtx      *rawSecCtx
+		SecCtx      []rawSecCtx
 		TokenBuffer []byte
-		QopState    *uint64
+		QopState    []uint64
 	}
 	var sctmp SecCtx
 	var cooked GetMicResults
@@ -1135,16 +1469,16 @@ func GetMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, qopReq uint64, message 
 	if err != nil {
 		return
 	}
-	if res.SecCtx != nil {
-		sctmp, err = cookSecCtx(*res.SecCtx)
+	if len(res.SecCtx) > 0 {
+		sctmp, err = cookSecCtx(res.SecCtx[0])
 		if err != nil {
 			return
 		}
 		cooked.SecCtx = &sctmp
 	}
 	cooked.TokenBuffer = res.TokenBuffer
-	if res.QopState != nil {
-		cooked.QopState = *res.QopState
+	if len(res.QopState) > 0 {
+		cooked.QopState = res.QopState[0]
 	}
 
 	results = cooked
@@ -1167,8 +1501,8 @@ func VerifyMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, qopReq uint64, messa
 	}
 	var res struct {
 		Status   rawStatus
-		SecCtx   *rawSecCtx
-		QopState *uint64
+		SecCtx   []rawSecCtx
+		QopState []uint64
 	}
 	var sctmp SecCtx
 	var cooked VerifyMicResults
@@ -1200,15 +1534,15 @@ func VerifyMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, qopReq uint64, messa
 	if err != nil {
 		return
 	}
-	if res.SecCtx != nil {
-		sctmp, err = cookSecCtx(*res.SecCtx)
+	if len(res.SecCtx) > 0 {
+		sctmp, err = cookSecCtx(res.SecCtx[0])
 		if err != nil {
 			return
 		}
 		cooked.SecCtx = &sctmp
 	}
-	if res.QopState != nil {
-		cooked.QopState = *res.QopState
+	if len(res.QopState) > 0 {
+		cooked.QopState = res.QopState[0]
 	}
 
 	results = cooked
@@ -1234,10 +1568,10 @@ func Wrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, confReq bool, message []b
 	}
 	var res struct {
 		Status      rawStatus
-		SecCtx      *rawSecCtx
+		SecCtx      []rawSecCtx
 		TokenBuffer []byte
-		ConfState   *bool
-		QopState    *uint64
+		ConfState   []bool
+		QopState    []uint64
 	}
 	var sctmp SecCtx
 	var cooked WrapResults
@@ -1269,19 +1603,19 @@ func Wrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, confReq bool, message []b
 	if err != nil {
 		return
 	}
-	if res.SecCtx != nil {
-		sctmp, err = cookSecCtx(*res.SecCtx)
+	if len(res.SecCtx) > 0 {
+		sctmp, err = cookSecCtx(res.SecCtx[0])
 		if err != nil {
 			return
 		}
 		cooked.SecCtx = &sctmp
 	}
 	cooked.TokenBuffer = res.TokenBuffer
-	if res.ConfState != nil {
-		cooked.ConfState = *res.ConfState
+	if len(res.ConfState) > 0 {
+		cooked.ConfState = res.ConfState[0]
 	}
-	if res.QopState != nil {
-		cooked.QopState = *res.QopState
+	if len(res.QopState) > 0 {
+		cooked.QopState = res.QopState[0]
 	}
 
 	results = cooked
@@ -1306,10 +1640,10 @@ func Unwrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, message []byte, qopReq 
 	}
 	var res struct {
 		Status      rawStatus
-		SecCtx      *rawSecCtx
+		SecCtx      []rawSecCtx
 		TokenBuffer []byte
-		ConfState   *bool
-		QopState    *uint64
+		ConfState   []bool
+		QopState    []uint64
 	}
 	var sctmp SecCtx
 	var cooked UnwrapResults
@@ -1340,19 +1674,19 @@ func Unwrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, message []byte, qopReq 
 	if err != nil {
 		return
 	}
-	if res.SecCtx != nil {
-		sctmp, err = cookSecCtx(*res.SecCtx)
+	if len(res.SecCtx) > 0 {
+		sctmp, err = cookSecCtx(res.SecCtx[0])
 		if err != nil {
 			return
 		}
 		cooked.SecCtx = &sctmp
 	}
 	cooked.TokenBuffer = res.TokenBuffer
-	if res.ConfState != nil {
-		cooked.ConfState = *res.ConfState
+	if len(res.ConfState) > 0 {
+		cooked.ConfState = res.ConfState[0]
 	}
-	if res.QopState != nil {
-		cooked.QopState = *res.QopState
+	if len(res.QopState) > 0 {
+		cooked.QopState = res.QopState[0]
 	}
 
 	results = cooked
