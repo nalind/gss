@@ -7,7 +7,6 @@ import "gss"
 import "gss/misc"
 import "net"
 import "os"
-import "strconv"
 import "strings"
 import "encoding/asn1"
 
@@ -37,7 +36,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 	}
 	major, minor, name := gss.ImportName(sname, gss.C_NT_HOSTBASED_SERVICE)
 	if major != gss.S_COMPLETE {
-		misc.DisplayError("importing remote service name", major, minor, nil)
+		misc.DisplayGSSError("importing remote service name", major, minor, nil)
 		return
 	}
 	defer gss.ReleaseName(name)
@@ -49,7 +48,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		/* Parse the user name. */
 		major, minor, username := gss.ImportName(*user, gss.C_NT_USER_NAME)
 		if major != gss.S_COMPLETE {
-			misc.DisplayError("importing client name", major, minor, nil)
+			misc.DisplayGSSError("importing client name", major, minor, nil)
 			return
 		}
 		defer gss.ReleaseName(username)
@@ -58,7 +57,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		if pmech != nil || spnego {
 			mechSet = make([]asn1.ObjectIdentifier, 1)
 			if spnego {
-				mechSet[0] = parseOid("1.3.6.1.5.5.2")
+				mechSet[0] = misc.ParseOid("1.3.6.1.5.5.2")
 			} else {
 				mechSet[0] = *pmech
 			}
@@ -75,7 +74,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 			major, minor, cred, _, _ = gss.AcquireCred(username, gss.C_INDEFINITE, mechSet, gss.C_INITIATE)
 		}
 		if major != gss.S_COMPLETE {
-			misc.DisplayError("acquiring creds", major, minor, &mechSet[0])
+			misc.DisplayGSSError("acquiring creds", major, minor, &mechSet[0])
 			return
 		}
 		defer gss.ReleaseCred(cred)
@@ -88,11 +87,11 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 			mechSet[0] = *pmech
 			major, minor = gss.SetNegMechs(cred, mechSet)
 			if major != gss.S_COMPLETE {
-				misc.DisplayError("setting negotiate mechs", major, minor, nil)
+				misc.DisplayGSSError("setting negotiate mechs", major, minor, nil)
 				return
 			}
 		}
-		mech = parseOid("1.3.6.1.5.5.2")
+		mech = misc.ParseOid("1.3.6.1.5.5.2")
 	} else {
 		if pmech != nil {
 			mech = *pmech
@@ -112,7 +111,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 			/* Start/continue. */
 			major, minor, _, token, flags, _, _, _ = gss.InitSecContext(cred, &ctx, name, mech, flags, gss.C_INDEFINITE, nil, token)
 			if major != gss.S_COMPLETE && major != gss.S_CONTINUE_NEEDED {
-				misc.DisplayError("initializing security context", major, minor, &mech)
+				misc.DisplayGSSError("initializing security context", major, minor, &mech)
 				gss.DeleteSecContext(ctx)
 				return
 			}
@@ -158,23 +157,23 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 			return
 		}
 		if !quiet {
-			misc.DisplayFlags(flags, false, os.Stdout)
+			misc.DisplayGSSFlags(flags, false, os.Stdout)
 		}
 
 		/* Describe the context. */
 		major, minor, sname, tname, lifetime, mech, flags2, _, _, local, open := gss.InquireContext(ctx)
 		if major != gss.S_COMPLETE {
-			misc.DisplayError("inquiring context", major, minor, &mech)
+			misc.DisplayGSSError("inquiring context", major, minor, &mech)
 			return
 		}
 		major, minor, srcname, srcnametype := gss.DisplayName(sname)
 		if major != gss.S_COMPLETE {
-			misc.DisplayError("displaying source name", major, minor, &mech)
+			misc.DisplayGSSError("displaying source name", major, minor, &mech)
 			return
 		}
 		major, minor, targname, _ := gss.DisplayName(tname)
 		if major != gss.S_COMPLETE {
-			misc.DisplayError("displaying target name", major, minor, &mech)
+			misc.DisplayGSSError("displaying target name", major, minor, &mech)
 			return
 		}
 		if local {
@@ -199,7 +198,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		}
 		major, minor, mechs := gss.InquireNamesForMech(mech)
 		if major != gss.S_COMPLETE {
-			misc.DisplayError("inquiring mech names", major, minor, &mech)
+			misc.DisplayGSSError("inquiring mech names", major, minor, &mech)
 			return
 		}
 		major, minor, oid = gss.OidToStr(mech)
@@ -212,7 +211,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		for i, nametype := range mechs {
 			major, minor, oid := gss.OidToStr(nametype)
 			if major != gss.S_COMPLETE {
-				misc.DisplayError("converting OID to string", major, minor, &mech)
+				misc.DisplayGSSError("converting OID to string", major, minor, &mech)
 			} else {
 				if !quiet {
 					fmt.Printf("%3d: %s\n", i, oid)
@@ -231,7 +230,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		} else {
 			major, minor, encrypted, wrapped = gss.Wrap(ctx, !noenc, gss.C_QOP_DEFAULT, plain)
 			if major != gss.S_COMPLETE {
-				misc.DisplayError("wrapping data", major, minor, &mech)
+				misc.DisplayGSSError("wrapping data", major, minor, &mech)
 				return
 			}
 			if !noenc && !encrypted && !quiet {
@@ -274,7 +273,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		} else {
 			major, minor, _ = gss.VerifyMIC(ctx, plain, mictoken)
 			if major != gss.S_COMPLETE {
-				misc.DisplayError("verifying signature", major, minor, &mech)
+				misc.DisplayGSSError("verifying signature", major, minor, &mech)
 				return
 			}
 			if !quiet {
@@ -285,23 +284,6 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 	if !v1 {
 		misc.SendToken(conn, misc.TOKEN_NOOP, nil)
 	}
-}
-
-func parseOid(oids string) (oid asn1.ObjectIdentifier) {
-	components := strings.Split(oids, ".")
-	if len(components) > 0 {
-		oid = make([]int, len(components))
-		for i, component := range components {
-			val, err := strconv.Atoi(component)
-			if err != nil {
-				fmt.Printf("Error parsing OID \"%s\".\n", oids)
-				oid = nil
-				return
-			}
-			oid[i] = val
-		}
-	}
-	return
 }
 
 func main() {
@@ -360,15 +342,15 @@ func main() {
 		plain = buffer.Bytes()
 	}
 	if *krb5 {
-		tmpmech := parseOid("1.3.5.1.5.2")
+		tmpmech := misc.ParseOid("1.3.5.1.5.2")
 		mech = &tmpmech
 	}
 	if *iakerb {
-		tmpmech := parseOid("1.3.6.1.5.2.5")
+		tmpmech := misc.ParseOid("1.3.6.1.5.2.5")
 		mech = &tmpmech
 	}
 	if len(*mechstr) > 0 {
-		tmpmech := parseOid(*mechstr)
+		tmpmech := misc.ParseOid(*mechstr)
 		mech = &tmpmech
 	}
 	if len(*user) == 0 {

@@ -6,57 +6,9 @@ import "encoding/asn1"
 import "fmt"
 import "gss/proxy"
 import "gss/misc"
-import "io"
 import "net"
 import "os"
-import "strconv"
 import "strings"
-
-func displayStatus(when string, status proxy.Status) {
-	fmt.Printf("Error \"%s\" ", status.MajorStatusString)
-	if len(when) > 0 {
-		fmt.Printf("while %s", when)
-	}
-	if len(status.MinorStatusString) > 0 {
-		fmt.Printf(" (%s)", status.MinorStatusString)
-	}
-	fmt.Printf(".\n")
-}
-
-func displayFlags(flags proxy.Flags, complete bool, file io.Writer) {
-	if flags.Deleg {
-		fmt.Fprintf(file, "context flag: GSS_C_DELEG_FLAG\n")
-	}
-	if flags.DelegPolicy {
-		fmt.Fprintf(file, "context flag: GSS_C_DELEG_POLICY_FLAG\n")
-	}
-	if flags.Mutual {
-		fmt.Fprintf(file, "context flag: GSS_C_MUTUAL_FLAG\n")
-	}
-	if flags.Replay {
-		fmt.Fprintf(file, "context flag: GSS_C_REPLAY_FLAG\n")
-	}
-	if flags.Sequence {
-		fmt.Fprintf(file, "context flag: GSS_C_SEQUENCE_FLAG\n")
-	}
-	if flags.Anon {
-		fmt.Fprintf(file, "context flag: GSS_C_ANON_FLAG\n")
-	}
-	if flags.Conf {
-		fmt.Fprintf(file, "context flag: GSS_C_CONF_FLAG \n")
-	}
-	if flags.Integ {
-		fmt.Fprintf(file, "context flag: GSS_C_INTEG_FLAG \n")
-	}
-	if complete {
-		if flags.Trans {
-			fmt.Fprintf(file, "context flag: GSS_C_TRANS_FLAG \n")
-		}
-		if flags.ProtReady {
-			fmt.Fprintf(file, "context flag: GSS_C_PROT_READY_FLAG \n")
-		}
-	}
-}
 
 func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, service string, mcount int, quiet bool, plain []byte, v1 bool, nmech *asn1.ObjectIdentifier, mech asn1.ObjectIdentifier, delegate, seq, noreplay, nomutual, noauth, nowrap, noenc, nomic bool) {
 	var ctx proxy.SecCtx
@@ -84,17 +36,19 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 		sname.DisplayName = service + "@" + host
 	}
 	sname.NameType = proxy.NT_HOSTBASED_SERVICE
-	icnr, err := proxy.ImportAndCanonName(pconn, pcc, sname, *nmech, nil, nil)
-	if err != nil {
-		fmt.Printf("Error importing remote service name: %s\n", err)
-		return
+	if nmech != nil {
+		icnr, err := proxy.ImportAndCanonName(pconn, pcc, sname, *nmech, nil, nil)
+		if err != nil {
+			fmt.Printf("Error importing remote service name: %s\n", err)
+			return
+		}
+		if icnr.Status.MajorStatus != 0 {
+			misc.DisplayProxyStatus("importing remote service name", icnr.Status)
+			return
+		}
+		sname = *icnr.Name
+		pcc.ServerCtx = icnr.Status.ServerCtx
 	}
-	if icnr.Status.MajorStatus != 0 {
-		displayStatus("importing remote service name", icnr.Status)
-		return
-	}
-	sname = *icnr.Name
-	pcc.ServerCtx = icnr.Status.ServerCtx
 
 	if noauth {
 		misc.SendToken(conn, misc.TOKEN_NOOP, nil)
@@ -113,7 +67,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 			status = iscr.Status
 			major = status.MajorStatus
 			if major != proxy.S_COMPLETE && major != proxy.S_CONTINUE_NEEDED {
-				displayStatus("initializing security context", iscr.Status)
+				misc.DisplayProxyStatus("initializing security context", iscr.Status)
 				return
 			}
 			pcc.ServerCtx = iscr.Status.ServerCtx
@@ -163,7 +117,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 			return
 		}
 		if !quiet {
-			displayFlags(flags, false, os.Stdout)
+			misc.DisplayProxyFlags(flags, false, os.Stdout)
 		}
 
 		/* Describe the context. */
@@ -192,7 +146,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 		status = imr.Status
 		major = status.MajorStatus
 		if major != proxy.S_COMPLETE && major != proxy.S_CONTINUE_NEEDED {
-			displayStatus("indicating mechanisms", imr.Status)
+			misc.DisplayProxyStatus("indicating mechanisms", imr.Status)
 			return
 		}
 		pcc.ServerCtx = imr.Status.ServerCtx
@@ -229,7 +183,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 			status = wr.Status
 			major = status.MajorStatus
 			if major != proxy.S_COMPLETE {
-				displayStatus("wrapping data", status)
+				misc.DisplayProxyStatus("wrapping data", status)
 				return
 			}
 			if !noenc && !wr.ConfState && !quiet {
@@ -284,7 +238,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 			status = vr.Status
 			major = status.MajorStatus
 			if major != proxy.S_COMPLETE {
-				displayStatus("verifying signature", status)
+				misc.DisplayProxyStatus("verifying signature", status)
 				return
 			}
 			pcc.ServerCtx = vr.Status.ServerCtx
@@ -300,23 +254,6 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 	if !v1 {
 		misc.SendToken(conn, misc.TOKEN_NOOP, nil)
 	}
-}
-
-func parseOid(oids string) (oid asn1.ObjectIdentifier) {
-	components := strings.Split(oids, ".")
-	if len(components) > 0 {
-		oid = make([]int, len(components))
-		for i, component := range components {
-			val, err := strconv.Atoi(component)
-			if err != nil {
-				fmt.Printf("Error parsing OID \"%s\".\n", oids)
-				oid = nil
-				return
-			}
-			oid[i] = val
-		}
-	}
-	return
 }
 
 func main() {
@@ -378,24 +315,21 @@ func main() {
 	if *spnego {
 		/* If we're doing SPNEGO, then a passed-in mechanism OID is the one we want to negotiate, but we can't. */
 		fmt.Printf("Warning: set_neg_mechs is not available.\n")
-		tmpmech := parseOid("1.3.6.1.5.5.2")
+		tmpmech := misc.ParseOid("1.3.6.1.5.5.2")
 		nmech = &tmpmech
 		mech = tmpmech
 	} else if *krb5 {
-		tmpmech := parseOid("1.2.840.113554.1.2.2")
+		tmpmech := misc.ParseOid("1.2.840.113554.1.2.2")
 		nmech = &tmpmech
 		mech = tmpmech
 	} else if *iakerb {
-		tmpmech := parseOid("1.3.6.1.5.2.5")
+		tmpmech := misc.ParseOid("1.3.6.1.5.2.5")
 		nmech = &tmpmech
 		mech = tmpmech
 	} else if len(*mechstr) > 0 {
-		tmpmech := parseOid(*mechstr)
+		tmpmech := misc.ParseOid(*mechstr)
 		nmech = &tmpmech
 		mech = tmpmech
-	} else {
-		tmpmech := parseOid("1.2.840.113554.1.2.2")
-		nmech = &tmpmech
 	}
 	if *noauth {
 		*nowrap = true

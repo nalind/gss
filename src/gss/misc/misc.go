@@ -2,10 +2,13 @@ package misc
 
 import "fmt"
 import "gss"
-import "net"
+import "gss/proxy"
 import "io"
-import "encoding/binary"
+import "net"
+import "strconv"
+import "strings"
 import "encoding/asn1"
+import "encoding/binary"
 
 const (
 	TOKEN_NOOP    byte = (1 << 0)
@@ -19,8 +22,74 @@ const (
 	TOKEN_SEND_MIC     byte = (1 << 7)
 )
 
+/* ParseOid returns an asn1.ObjectIdentifier based on the dotted form input string. */
+func ParseOid(oids string) (oid asn1.ObjectIdentifier) {
+	components := strings.Split(oids, ".")
+	if len(components) > 0 {
+		oid = make([]int, len(components))
+		for i, component := range components {
+			val, err := strconv.Atoi(component)
+			if err != nil {
+				fmt.Printf("Error parsing OID \"%s\".\n", oids)
+				oid = nil
+				return
+			}
+			oid[i] = val
+		}
+	}
+	return
+}
+
+/* DisplayProxyStatus prints status error messages associated with the passed-in Status object. */
+func DisplayProxyStatus(when string, status proxy.Status) {
+	fmt.Printf("Error \"%s\" ", status.MajorStatusString)
+	if len(when) > 0 {
+		fmt.Printf("while %s", when)
+	}
+	if len(status.MinorStatusString) > 0 {
+		fmt.Printf(" (%s)", status.MinorStatusString)
+	}
+	fmt.Printf(".\n")
+}
+
+/* DisplayProxyFlags logs the contents of the passed-in flags. */
+func DisplayProxyFlags(flags proxy.Flags, complete bool, file io.Writer) {
+	if flags.Deleg {
+		fmt.Fprintf(file, "context flag: GSS_C_DELEG_FLAG\n")
+	}
+	if flags.DelegPolicy {
+		fmt.Fprintf(file, "context flag: GSS_C_DELEG_POLICY_FLAG\n")
+	}
+	if flags.Mutual {
+		fmt.Fprintf(file, "context flag: GSS_C_MUTUAL_FLAG\n")
+	}
+	if flags.Replay {
+		fmt.Fprintf(file, "context flag: GSS_C_REPLAY_FLAG\n")
+	}
+	if flags.Sequence {
+		fmt.Fprintf(file, "context flag: GSS_C_SEQUENCE_FLAG\n")
+	}
+	if flags.Anon {
+		fmt.Fprintf(file, "context flag: GSS_C_ANON_FLAG\n")
+	}
+	if flags.Conf {
+		fmt.Fprintf(file, "context flag: GSS_C_CONF_FLAG \n")
+	}
+	if flags.Integ {
+		fmt.Fprintf(file, "context flag: GSS_C_INTEG_FLAG \n")
+	}
+	if complete {
+		if flags.Trans {
+			fmt.Fprintf(file, "context flag: GSS_C_TRANS_FLAG \n")
+		}
+		if flags.ProtReady {
+			fmt.Fprintf(file, "context flag: GSS_C_PROT_READY_FLAG \n")
+		}
+	}
+}
+
 /* DisplayError prints error messages associated with the passed-in major and minor error codes. */
-func DisplayError(when string, major, minor uint32, mech *asn1.ObjectIdentifier) {
+func DisplayGSSError(when string, major, minor uint32, mech *asn1.ObjectIdentifier) {
 	fmt.Print(gss.DisplayStatus(major, gss.C_GSS_CODE, nil))
 	fmt.Printf(" ")
 	if len(when) > 0 {
@@ -33,8 +102,8 @@ func DisplayError(when string, major, minor uint32, mech *asn1.ObjectIdentifier)
 	}
 }
 
-/* DisplayFlags logs the contents of the passed-in flags. */
-func DisplayFlags(flags gss.Flags, complete bool, file io.Writer) {
+/* DisplayGSSFlags logs the contents of the passed-in flags. */
+func DisplayGSSFlags(flags gss.Flags, complete bool, file io.Writer) {
 	if flags.Deleg {
 		fmt.Fprintf(file, "context flag: GSS_C_DELEG_FLAG\n")
 	}

@@ -427,9 +427,31 @@ func cookMechInfo(mi rawMechInfo) (cooked MechInfo, err error) {
 	return
 }
 
-type NameAttr struct {
+type rawNameAttr struct {
 	Attr, Value []byte
 	Extensions  []Option
+}
+
+type NameAttr struct {
+	Attr       string
+	Value      []byte
+	Extensions []Option
+}
+
+func cookNameAttr(a rawNameAttr) (cooked NameAttr, err error) {
+	buf := bytes.NewBuffer(a.Attr)
+	cooked.Attr = buf.String()
+	cooked.Value = a.Value
+	cooked.Extensions = a.Extensions
+	return
+}
+
+func uncookNameAttr(a NameAttr) (raw rawNameAttr, err error) {
+	buf := bytes.NewBufferString(a.Attr)
+	raw.Attr = buf.Bytes()
+	raw.Value = a.Value
+	raw.Extensions = a.Extensions
+	return
 }
 
 type rawStatus struct {
@@ -474,7 +496,7 @@ type CallCtx struct {
 type rawName struct {
 	DisplayName                                   string
 	NameType, ExportedName, ExportedCompositeName []byte
-	NameAttributes                                []NameAttr
+	NameAttributes                                []rawNameAttr
 	Extensions                                    []Option
 }
 
@@ -487,6 +509,7 @@ type Name struct {
 }
 
 func uncookName(n Name) (raw rawName, err error) {
+	var natmp rawNameAttr
 	raw.DisplayName = n.DisplayName
 	if len(n.NameType) > 0 {
 		raw.NameType, err = uncookOid(n.NameType)
@@ -496,12 +519,20 @@ func uncookName(n Name) (raw rawName, err error) {
 	}
 	raw.ExportedName = n.ExportedName
 	raw.ExportedCompositeName = n.ExportedCompositeName
-	raw.NameAttributes = n.NameAttributes
+	raw.NameAttributes = make([]rawNameAttr, len(n.NameAttributes))
+	for i, na := range n.NameAttributes {
+		natmp, err = uncookNameAttr(na)
+		if err != nil {
+			return
+		}
+		raw.NameAttributes[i] = natmp
+	}
 	raw.Extensions = n.Extensions
 	return
 }
 
 func cookName(n rawName) (cooked Name, err error) {
+	var natmp NameAttr
 	cooked.DisplayName = n.DisplayName
 	if len(n.NameType) > 0 {
 		cooked.NameType, err = cookOid(n.NameType)
@@ -511,20 +542,28 @@ func cookName(n rawName) (cooked Name, err error) {
 	}
 	cooked.ExportedName = n.ExportedName
 	cooked.ExportedCompositeName = n.ExportedCompositeName
-	cooked.NameAttributes = n.NameAttributes
+	cooked.NameAttributes = make([]NameAttr, len(n.NameAttributes))
+	for i, na := range n.NameAttributes {
+		natmp, err = cookNameAttr(na)
+		if err != nil {
+			return
+		}
+		cooked.NameAttributes[i] = natmp
+	}
 	cooked.Extensions = n.Extensions
 	return
 }
 
 type rawCredElement struct {
-	MN, Mech                          []byte
+	MN                                rawName
+	Mech                              []byte
 	CredUsage                         uint32
 	InitiatorTimeRec, AcceptorTimeRec uint64
 	Options                           []Option
 }
 
 type CredElement struct {
-	MN                                []byte
+	MN                                Name
 	Mech                              asn1.ObjectIdentifier
 	CredUsage                         int
 	InitiatorTimeRec, AcceptorTimeRec uint64
@@ -532,7 +571,10 @@ type CredElement struct {
 }
 
 func uncookCredElement(ce CredElement) (raw rawCredElement, err error) {
-	raw.MN = ce.MN
+	raw.MN, err = uncookName(ce.MN)
+	if err != nil {
+		return
+	}
 	raw.Mech, err = uncookOid(ce.Mech)
 	if err != nil {
 		return
@@ -545,7 +587,10 @@ func uncookCredElement(ce CredElement) (raw rawCredElement, err error) {
 }
 
 func cookCredElement(c rawCredElement) (cooked CredElement, err error) {
-	cooked.MN = c.MN
+	cooked.MN, err = cookName(c.MN)
+	if err != nil {
+		return
+	}
 	cooked.Mech, err = cookOid(c.Mech)
 	if err != nil {
 		return
@@ -789,7 +834,7 @@ func ImportAndCanonName(conn *net.Conn, callCtx CallCtx, name Name, mech asn1.Ob
 		CallCtx   CallCtx
 		InputName rawName
 		Mech      []byte
-		NameAttrs []NameAttr
+		NameAttrs []rawNameAttr
 		Options   []Option
 	}
 	var res struct {
@@ -799,6 +844,7 @@ func ImportAndCanonName(conn *net.Conn, callCtx CallCtx, name Name, mech asn1.Ob
 	}
 	var cooked ImportAndCanonNameResults
 	var ntmp Name
+	var natmp rawNameAttr
 	var cbuf, rbuf bytes.Buffer
 
 	args.CallCtx = callCtx
@@ -810,7 +856,14 @@ func ImportAndCanonName(conn *net.Conn, callCtx CallCtx, name Name, mech asn1.Ob
 	if err != nil {
 		return
 	}
-	args.NameAttrs = nameAttrs
+	args.NameAttrs = make([]rawNameAttr, len(nameAttrs))
+	for i, na := range nameAttrs {
+		natmp, err = uncookNameAttr(na)
+		if err != nil {
+			return
+		}
+		args.NameAttrs[i] = natmp
+	}
 	args.Options = options
 	_, err = xdr.Marshal(&cbuf, &args)
 	if err != nil {
@@ -844,10 +897,10 @@ func ImportAndCanonName(conn *net.Conn, callCtx CallCtx, name Name, mech asn1.Ob
 }
 
 type ExportCredResults struct {
-	Status    Status
-	CredUsage int
-	Exported  []byte
-	Options   []Option
+	Status         Status
+	CredUsage      int
+	ExportedHandle []byte
+	Options        []Option
 }
 
 /* ExportCred converts a credential structure into a byte slice. */
@@ -859,10 +912,10 @@ func ExportCred(conn *net.Conn, callCtx CallCtx, cred Cred, credUsage int, optio
 		Options   []Option
 	}
 	var res struct {
-		Status    rawStatus
-		CredUsage int
-		Exported  []byte
-		Options   []Option
+		Status         rawStatus
+		CredUsage      int
+		ExportedHandle []byte
+		Options        []Option
 	}
 	var cooked ExportCredResults
 	var cbuf, rbuf bytes.Buffer
@@ -894,16 +947,16 @@ func ExportCred(conn *net.Conn, callCtx CallCtx, cred Cred, credUsage int, optio
 		return
 	}
 	cooked.CredUsage = res.CredUsage
-	cooked.Exported = res.Exported
+	cooked.ExportedHandle = res.ExportedHandle
 	cooked.Options = res.Options
 	results = cooked
 	return
 }
 
 type ImportCredResults struct {
-	Status  Status
-	Cred    *Cred
-	Options []Option
+	Status           Status
+	OutputCredHandle *Cred
+	Options          []Option
 }
 
 /* ImportCred constructs a credential structure from a byte slice. */
@@ -914,9 +967,9 @@ func ImportCred(conn *net.Conn, callCtx CallCtx, exportedCred []byte, options []
 		Options      []Option
 	}
 	var res struct {
-		Status  rawStatus
-		Cred    []rawCred
-		Options []Option
+		Status           rawStatus
+		OutputCredHandle []rawCred
+		Options          []Option
 	}
 	var cooked ImportCredResults
 	var cbuf, rbuf bytes.Buffer
@@ -944,12 +997,12 @@ func ImportCred(conn *net.Conn, callCtx CallCtx, exportedCred []byte, options []
 	if err != nil {
 		return
 	}
-	if len(res.Cred) > 0 {
-		ctmp, err = cookCred(res.Cred[0])
+	if len(res.OutputCredHandle) > 0 {
+		ctmp, err = cookCred(res.OutputCredHandle[0])
 		if err != nil {
 			return
 		}
-		cooked.Cred = &ctmp
+		cooked.OutputCredHandle = &ctmp
 	}
 	cooked.Options = res.Options
 	results = cooked
@@ -957,9 +1010,9 @@ func ImportCred(conn *net.Conn, callCtx CallCtx, exportedCred []byte, options []
 }
 
 type AcquireCredResults struct {
-	Status  Status
-	Cred    *Cred
-	Options []Option
+	Status           Status
+	OutputCredHandle *Cred
+	Options          []Option
 }
 
 /* AcquireCred adds credentials to a credential structure, possibly creating one. */
@@ -976,9 +1029,9 @@ func AcquireCred(conn *net.Conn, callCtx CallCtx, inputCredHandle *Cred, addCred
 		Options                           []Option
 	}
 	var res struct {
-		Status  rawStatus
-		Cred    []rawCred
-		Options []Option
+		Status           rawStatus
+		OutputCredHandle []rawCred
+		Options          []Option
 	}
 	var cooked AcquireCredResults
 	var ctmp rawCred
@@ -1038,12 +1091,12 @@ func AcquireCred(conn *net.Conn, callCtx CallCtx, inputCredHandle *Cred, addCred
 	if err != nil {
 		return
 	}
-	if len(res.Cred) > 0 {
-		cctmp, err = cookCred(res.Cred[0])
+	if len(res.OutputCredHandle) > 0 {
+		cctmp, err = cookCred(res.OutputCredHandle[0])
 		if err != nil {
 			return
 		}
-		cooked.Cred = &cctmp
+		cooked.OutputCredHandle = &cctmp
 	}
 	cooked.Options = res.Options
 
@@ -1237,7 +1290,7 @@ func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, ta
 
 type AcceptSecContextResults struct {
 	Status              Status
-	SecCtx                 *SecCtx
+	SecCtx              *SecCtx
 	OutputToken         *[]byte
 	DelegatedCredHandle *Cred
 	Options             []Option
@@ -1568,7 +1621,7 @@ func Wrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, confReq bool, message [][
 		SecCtx        rawSecCtx
 		ConfReq       bool
 		MessageBuffer [][]byte
-		QopState uint64
+		QopState      uint64
 	}
 	var res struct {
 		Status      rawStatus
@@ -1629,23 +1682,23 @@ func Wrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, confReq bool, message [][
 type UnwrapResults struct {
 	Status      Status
 	SecCtx      *SecCtx
-	TokenBuffer []byte
+	TokenBuffer [][]byte
 	ConfState   bool
 	QopState    uint64
 }
 
 /* Unwrap verifies protection on plaintext, optionally removing a confidentiality layer. */
-func Unwrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, message []byte, qopReq uint64) (results UnwrapResults, err error) {
+func Unwrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, message [][]byte, qopReq uint64) (results UnwrapResults, err error) {
 	var args struct {
 		CallCtx       CallCtx
 		SecCtx        rawSecCtx
-		MessageBuffer []byte
+		MessageBuffer [][]byte
 		QopReq        uint64
 	}
 	var res struct {
 		Status      rawStatus
 		SecCtx      []rawSecCtx
-		TokenBuffer []byte
+		TokenBuffer [][]byte
 		ConfState   []bool
 		QopState    []uint64
 	}
