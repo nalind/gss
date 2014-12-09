@@ -765,6 +765,8 @@ func IndicateMechs(conn *net.Conn, callCtx CallCtx) (results IndicateMechsResult
 	if err != nil {
 		return
 	}
+	callCtx.ServerCtx = cooked.Status.ServerCtx
+
 	cooked.Mechs = make([]MechInfo, len(res.Mechs))
 	for i, m := range res.Mechs {
 		cooked.Mechs[i], err = cookMechInfo(m)
@@ -817,6 +819,7 @@ func GetCallContext(conn *net.Conn, callCtx CallCtx, options []Option) (results 
 	if err != nil {
 		return
 	}
+	callCtx.ServerCtx = res.ServerCtx
 
 	results = res
 	return
@@ -883,6 +886,8 @@ func ImportAndCanonName(conn *net.Conn, callCtx CallCtx, name Name, mech asn1.Ob
 	if err != nil {
 		return
 	}
+	callCtx.ServerCtx = cooked.Status.ServerCtx
+
 	if len(res.OutputName) > 0 {
 		ntmp, err = cookName(res.OutputName[0])
 		if err != nil {
@@ -941,14 +946,16 @@ func ExportCred(conn *net.Conn, callCtx CallCtx, cred Cred, credUsage int, optio
 	if err != nil {
 		return
 	}
-
 	cooked.Status, err = cookStatus(res.Status)
 	if err != nil {
 		return
 	}
+	callCtx.ServerCtx = cooked.Status.ServerCtx
+
 	cooked.CredUsage = res.CredUsage
 	cooked.ExportedHandle = res.ExportedHandle
 	cooked.Options = res.Options
+
 	results = cooked
 	return
 }
@@ -992,11 +999,12 @@ func ImportCred(conn *net.Conn, callCtx CallCtx, exportedCred []byte, options []
 	if err != nil {
 		return
 	}
-
 	cooked.Status, err = cookStatus(res.Status)
 	if err != nil {
 		return
 	}
+	callCtx.ServerCtx = cooked.Status.ServerCtx
+
 	if len(res.OutputCredHandle) > 0 {
 		ctmp, err = cookCred(res.OutputCredHandle[0])
 		if err != nil {
@@ -1005,6 +1013,7 @@ func ImportCred(conn *net.Conn, callCtx CallCtx, exportedCred []byte, options []
 		cooked.OutputCredHandle = &ctmp
 	}
 	cooked.Options = res.Options
+
 	results = cooked
 	return
 }
@@ -1091,6 +1100,8 @@ func AcquireCred(conn *net.Conn, callCtx CallCtx, inputCredHandle *Cred, addCred
 	if err != nil {
 		return
 	}
+	callCtx.ServerCtx = cooked.Status.ServerCtx
+
 	if len(res.OutputCredHandle) > 0 {
 		cctmp, err = cookCred(res.OutputCredHandle[0])
 		if err != nil {
@@ -1161,6 +1172,8 @@ func StoreCred(conn *net.Conn, callCtx CallCtx, cred Cred, credUsage int, desire
 	if err != nil {
 		return
 	}
+	callCtx.ServerCtx = cooked.Status.ServerCtx
+
 	cooked.ElementsStored = make([]asn1.ObjectIdentifier, len(res.ElementsStored))
 	for i, es := range res.ElementsStored {
 		cooked.ElementsStored[i], err = cookOid(es)
@@ -1272,6 +1285,8 @@ func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, ta
 	if err != nil {
 		return
 	}
+	callCtx.ServerCtx = cooked.Status.ServerCtx
+
 	if len(res.Ctx) > 0 {
 		sctmp, err = cookSecCtx(res.Ctx[0])
 		if err != nil {
@@ -1363,6 +1378,8 @@ func AcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, 
 	if err != nil {
 		return
 	}
+	callCtx.ServerCtx = cooked.Status.ServerCtx
+
 	if len(res.Ctx) > 0 {
 		sctmp, err = cookSecCtx(res.Ctx[0])
 		if err != nil {
@@ -1427,6 +1444,7 @@ func ReleaseCred(conn *net.Conn, callCtx CallCtx, cred Cred) (results ReleaseCre
 	if err != nil {
 		return
 	}
+	callCtx.ServerCtx = cooked.Status.ServerCtx
 
 	results = cooked
 	return
@@ -1473,6 +1491,7 @@ func ReleaseSecCtx(conn *net.Conn, callCtx CallCtx, ctx SecCtx) (results Release
 	if err != nil {
 		return
 	}
+	callCtx.ServerCtx = cooked.Status.ServerCtx
 
 	results = cooked
 	return
@@ -1528,6 +1547,8 @@ func GetMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, qopReq uint64, message 
 	if err != nil {
 		return
 	}
+	callCtx.ServerCtx = cooked.Status.ServerCtx
+
 	if len(res.SecCtx) > 0 {
 		sctmp, err = cookSecCtx(res.SecCtx[0])
 		if err != nil {
@@ -1591,6 +1612,8 @@ func VerifyMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, messageBuffer, token
 	if err != nil {
 		return
 	}
+	callCtx.ServerCtx = cooked.Status.ServerCtx
+
 	if len(res.SecCtx) > 0 {
 		sctmp, err = cookSecCtx(res.SecCtx[0])
 		if err != nil {
@@ -1660,6 +1683,8 @@ func Wrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, confReq bool, message [][
 	if err != nil {
 		return
 	}
+	callCtx.ServerCtx = cooked.Status.ServerCtx
+
 	if len(res.SecCtx) > 0 {
 		sctmp, err = cookSecCtx(res.SecCtx[0])
 		if err != nil {
@@ -1731,6 +1756,8 @@ func Unwrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, message [][]byte, qopRe
 	if err != nil {
 		return
 	}
+	callCtx.ServerCtx = cooked.Status.ServerCtx
+
 	if len(res.SecCtx) > 0 {
 		sctmp, err = cookSecCtx(res.SecCtx[0])
 		if err != nil {
@@ -1797,6 +1824,8 @@ func WrapSizeLimit(conn *net.Conn, callCtx CallCtx, ctx SecCtx, confReq bool, qo
 	if err != nil {
 		return
 	}
+	callCtx.ServerCtx = cooked.Status.ServerCtx
+
 	cooked.MaxInputSize = res.MaxInputSize
 
 	results = cooked

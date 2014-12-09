@@ -58,7 +58,6 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 					misc.DisplayProxyStatus("exporting a credential", ecr.Status)
 					return
 				}
-				pcc.ServerCtx = ecr.Status.ServerCtx
 				icr, err := proxy.ImportCred(pconn, pcc, ecr.ExportedHandle, nil)
 				if err != nil {
 					fmt.Fprintf(logfile, "Error importing credential: %s\n", err)
@@ -68,7 +67,6 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 					misc.DisplayProxyStatus("importing a credential", icr.Status)
 					return
 				}
-				pcc.ServerCtx = icr.Status.ServerCtx
 				cred = icr.OutputCredHandle
 			}
 		}
@@ -95,7 +93,6 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 				misc.DisplayProxyStatus("accepting a context", ascr.Status)
 				return
 			}
-			pcc.ServerCtx = ascr.Status.ServerCtx
 			if ascr.SecCtx != nil {
 				pctx = ascr.SecCtx
 			}
@@ -215,7 +212,6 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 				misc.DisplayProxyStatus("unwrapping token", ur.Status)
 				return
 			}
-			pcc.ServerCtx = ur.Status.ServerCtx
 			if ur.SecCtx != nil {
 				pctx = ur.SecCtx
 			}
@@ -248,7 +244,6 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 				misc.DisplayProxyStatus("unwrapping token", gmr.Status)
 				return
 			}
-			pcc.ServerCtx = gmr.Status.ServerCtx
 			if gmr.SecCtx != nil {
 				pctx = gmr.SecCtx
 			}
@@ -297,12 +292,15 @@ func main() {
 	}
 
 	/* Get a calling context. */
-	ctr, err := proxy.GetCallContext(&pconn, call, nil)
+	gccr, err := proxy.GetCallContext(&pconn, call, nil)
 	if err != nil {
 		fmt.Printf("Error getting a calling context: %s", err)
 		return
 	}
-	call.ServerCtx = ctr.ServerCtx
+	if gccr.Status.MajorStatus != proxy.S_COMPLETE {
+		misc.DisplayProxyStatus("getting calling context", gccr.Status)
+		return
+	}
 
 	/* Set up the listener socket. */
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(*port))
@@ -326,7 +324,6 @@ func main() {
 			return
 		}
 		sname = *icnr.Name
-		call.ServerCtx = icnr.Status.ServerCtx
 	}
 
 	/* Make sure we have acceptor creds for the service name. */
@@ -343,8 +340,10 @@ func main() {
 		misc.DisplayProxyStatus("acquiring credentials", acr.Status)
 		return
 	}
-	call.ServerCtx = acr.Status.ServerCtx
 	cred := acr.OutputCredHandle
+	if cred != nil {
+		defer proxy.ReleaseCred(&pconn, call, *cred)
+	}
 
 	fmt.Printf("starting...\n")
 	if *once {

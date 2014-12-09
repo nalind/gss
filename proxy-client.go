@@ -47,7 +47,6 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 			return
 		}
 		sname = *icnr.Name
-		pcc.ServerCtx = icnr.Status.ServerCtx
 	}
 
 	if noauth {
@@ -70,7 +69,6 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 				misc.DisplayProxyStatus("initializing security context", iscr.Status)
 				return
 			}
-			pcc.ServerCtx = iscr.Status.ServerCtx
 			if iscr.SecCtx != nil {
 				ctx = *iscr.SecCtx
 				pctx = &ctx
@@ -149,7 +147,6 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 			misc.DisplayProxyStatus("indicating mechanisms", imr.Status)
 			return
 		}
-		pcc.ServerCtx = imr.Status.ServerCtx
 
 		for _, mech := range imr.Mechs {
 			if !mech.Mech.Equal(ctx.Mech) {
@@ -189,7 +186,6 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 			if !noenc && !wr.ConfState && !quiet {
 				fmt.Printf("Warning!  Message not encrypted.\n")
 			}
-			pcc.ServerCtx = wr.Status.ServerCtx
 			if wr.SecCtx != nil {
 				ctx = *wr.SecCtx
 				pctx = &ctx
@@ -241,7 +237,6 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 				misc.DisplayProxyStatus("verifying signature", status)
 				return
 			}
-			pcc.ServerCtx = vr.Status.ServerCtx
 			if vr.SecCtx != nil {
 				ctx = *vr.SecCtx
 				pctx = &ctx
@@ -343,12 +338,15 @@ func main() {
 		return
 	}
 
-	ctr, err := proxy.GetCallContext(&pconn, call, nil)
+	gccr, err := proxy.GetCallContext(&pconn, call, nil)
 	if err != nil {
 		fmt.Printf("Error getting a calling context: %s", err)
 		return
 	}
-	call.ServerCtx = ctr.ServerCtx
+	if gccr.Status.MajorStatus != proxy.S_COMPLETE {
+		misc.DisplayProxyStatus("getting calling context", gccr.Status)
+		return
+	}
 
 	for c := 0; c < *ccount; c++ {
 		connectOnce(&pconn, call, host, *port, service, *mcount, *quiet, plain, *v1, nmech, mech, *delegate, *seq, *noreplay, *nomutual, *noauth, *nowrap, *noenc, *nomic)
