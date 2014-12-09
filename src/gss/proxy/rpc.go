@@ -230,7 +230,7 @@ func CallRpc(conn *net.Conn, prog, vers, proc, authFlavor uint32, body []byte, r
 		case GARBAGE_ARGS:
 			err = errors.New("RPC procedure arguments could not be parsed")
 		case SYSTEM_ERR:
-			err = errors.New("system-level error")
+			err = errors.New("RPC system-level error")
 		}
 		if err != nil {
 			return

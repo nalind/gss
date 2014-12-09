@@ -488,9 +488,11 @@ type Name struct {
 
 func uncookName(n Name) (raw rawName, err error) {
 	raw.DisplayName = n.DisplayName
-	raw.NameType, err = uncookOid(n.NameType)
-	if err != nil {
-		return
+	if len(n.NameType) > 0 {
+		raw.NameType, err = uncookOid(n.NameType)
+		if err != nil {
+			return
+		}
 	}
 	raw.ExportedName = n.ExportedName
 	raw.ExportedCompositeName = n.ExportedCompositeName
@@ -501,9 +503,11 @@ func uncookName(n Name) (raw rawName, err error) {
 
 func cookName(n rawName) (cooked Name, err error) {
 	cooked.DisplayName = n.DisplayName
-	cooked.NameType, err = cookOid(n.NameType)
-	if err != nil {
-		return
+	if len(n.NameType) > 0 {
+		cooked.NameType, err = cookOid(n.NameType)
+		if err != nil {
+			return
+		}
 	}
 	cooked.ExportedName = n.ExportedName
 	cooked.ExportedCompositeName = n.ExportedCompositeName
@@ -623,8 +627,9 @@ type SecCtx struct {
 }
 
 func uncookSecCtx(s SecCtx) (raw rawSecCtx, err error) {
-	raw.ExportedContextToken = raw.ExportedContextToken
-	raw.NeedsRelease = raw.NeedsRelease
+	raw.ExportedContextToken = s.ExportedContextToken
+	raw.State = s.State
+	raw.NeedsRelease = s.NeedsRelease
 	if len(s.Mech) > 0 {
 		raw.Mech, err = uncookOid(s.Mech)
 		if err != nil {
@@ -649,6 +654,7 @@ func uncookSecCtx(s SecCtx) (raw rawSecCtx, err error) {
 
 func cookSecCtx(c rawSecCtx) (cooked SecCtx, err error) {
 	cooked.ExportedContextToken = c.ExportedContextToken
+	cooked.State = c.State
 	cooked.NeedsRelease = c.NeedsRelease
 	if len(c.Mech) > 0 {
 		cooked.Mech, err = cookOid(c.Mech)
@@ -800,11 +806,9 @@ func ImportAndCanonName(conn *net.Conn, callCtx CallCtx, name Name, mech asn1.Ob
 	if err != nil {
 		return
 	}
-	if len(mech) > 0 {
-		args.Mech, err = uncookOid(mech)
-		if err != nil {
-			return
-		}
+	args.Mech, err = uncookOid(mech)
+	if err != nil {
+		return
 	}
 	args.NameAttrs = nameAttrs
 	args.Options = options
@@ -1120,13 +1124,13 @@ func StoreCred(conn *net.Conn, callCtx CallCtx, cred Cred, credUsage int, desire
 
 type InitSecContextResults struct {
 	Status      Status
-	Ctx         *SecCtx
+	SecCtx      *SecCtx
 	OutputToken *[]byte
 	Options     []Option
 }
 
 /* InitSecContext initiates a security context with a peer. */
-func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, targetName *Name, mechType asn1.ObjectIdentifier, reqFlags Flags, timeReq uint64, inputToken []byte, options []Option) (results InitSecContextResults, err error) {
+func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, targetName *Name, mechType asn1.ObjectIdentifier, reqFlags Flags, timeReq uint64, inputToken *[]byte, options []Option) (results InitSecContextResults, err error) {
 	var args struct {
 		CallCtx           CallCtx
 		Ctx               []rawSecCtx
@@ -1182,15 +1186,17 @@ func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, ta
 	} else {
 		args.TargetName = make([]rawName, 0)
 	}
-	args.MechType, err = uncookOid(mechType)
-	if err != nil {
-		return
+	if len(mechType) > 0 {
+		args.MechType, err = uncookOid(mechType)
+		if err != nil {
+			return
+		}
 	}
 	args.ReqFlags = uncookFlags(reqFlags)
 	args.TimeReq = timeReq
 	if inputToken != nil {
 		args.InputToken = make([][]byte, 1)
-		args.InputToken[0] = inputToken
+		args.InputToken[0] = *inputToken
 	} else {
 		args.InputToken = make([][]byte, 0)
 	}
@@ -1218,7 +1224,7 @@ func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, ta
 		if err != nil {
 			return
 		}
-		cooked.Ctx = &sctmp
+		cooked.SecCtx = &sctmp
 	}
 	if len(res.OutputToken) > 0 {
 		cooked.OutputToken = &res.OutputToken[0]
@@ -1231,7 +1237,7 @@ func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, ta
 
 type AcceptSecContextResults struct {
 	Status              Status
-	Ctx                 *SecCtx
+	SecCtx                 *SecCtx
 	OutputToken         *[]byte
 	DelegatedCredHandle *Cred
 	Options             []Option
@@ -1309,7 +1315,7 @@ func AcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, 
 		if err != nil {
 			return
 		}
-		cooked.Ctx = &sctmp
+		cooked.SecCtx = &sctmp
 	}
 	if len(res.OutputToken) > 0 {
 		cooked.OutputToken = &res.OutputToken[0]
@@ -1492,11 +1498,10 @@ type VerifyMicResults struct {
 }
 
 /* VerifyMic checks an already-computed integrity checksum over the passed-in message. */
-func VerifyMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, qopReq uint64, messageBuffer, tokenBuffer []byte) (results VerifyMicResults, err error) {
+func VerifyMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, messageBuffer, tokenBuffer []byte) (results VerifyMicResults, err error) {
 	var args struct {
 		CallCtx                    CallCtx
 		SecCtx                     rawSecCtx
-		QopReq                     uint64
 		MessageBuffer, TokenBuffer []byte
 	}
 	var res struct {
@@ -1513,7 +1518,6 @@ func VerifyMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, qopReq uint64, messa
 	if err != nil {
 		return
 	}
-	args.QopReq = qopReq
 	args.MessageBuffer = messageBuffer
 	args.TokenBuffer = tokenBuffer
 	_, err = xdr.Marshal(&cbuf, &args)
@@ -1552,24 +1556,24 @@ func VerifyMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, qopReq uint64, messa
 type WrapResults struct {
 	Status      Status
 	SecCtx      *SecCtx
-	TokenBuffer []byte
+	TokenBuffer [][]byte
 	ConfState   bool
 	QopState    uint64
 }
 
 /* Wrap applies protection to plaintext, optionally using confidentiality. */
-func Wrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, confReq bool, message []byte, qopReq uint64) (results WrapResults, err error) {
+func Wrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, confReq bool, message [][]byte, qopState uint64) (results WrapResults, err error) {
 	var args struct {
 		CallCtx       CallCtx
 		SecCtx        rawSecCtx
 		ConfReq       bool
-		MessageBuffer []byte
-		QopReq        uint64
+		MessageBuffer [][]byte
+		QopState uint64
 	}
 	var res struct {
 		Status      rawStatus
 		SecCtx      []rawSecCtx
-		TokenBuffer []byte
+		TokenBuffer [][]byte
 		ConfState   []bool
 		QopState    []uint64
 	}
@@ -1584,7 +1588,7 @@ func Wrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, confReq bool, message []b
 	}
 	args.ConfReq = confReq
 	args.MessageBuffer = message
-	args.QopReq = qopReq
+	args.QopState = qopState
 	_, err = xdr.Marshal(&cbuf, &args)
 	if err != nil {
 		return

@@ -58,13 +58,12 @@ func displayFlags(flags proxy.Flags, complete bool, file io.Writer) {
 	}
 }
 
-func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, service string, mcount int, quiet bool, plain []byte, v1, spnego bool, pmech *asn1.ObjectIdentifier, delegate, seq, noreplay, nomutual, noauth, nowrap, noenc, nomic bool) {
+func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, service string, mcount int, quiet bool, plain []byte, v1 bool, nmech *asn1.ObjectIdentifier, mech asn1.ObjectIdentifier, delegate, seq, noreplay, nomutual, noauth, nowrap, noenc, nomic bool) {
 	var ctx proxy.SecCtx
-	var cred proxy.Cred
-	var mech asn1.ObjectIdentifier
+	var pctx *proxy.SecCtx
 	var status proxy.Status
 	var tag byte
-	var token []byte
+	var ptoken *[]byte
 	var major, minor uint64
 	var sname proxy.Name
 	var localstate, openstate string
@@ -85,7 +84,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 		sname.DisplayName = service + "@" + host
 	}
 	sname.NameType = proxy.NT_HOSTBASED_SERVICE
-	icnr, err := proxy.ImportAndCanonName(pconn, pcc, sname, nil, nil, nil)
+	icnr, err := proxy.ImportAndCanonName(pconn, pcc, sname, *nmech, nil, nil)
 	if err != nil {
 		fmt.Printf("Error importing remote service name: %s\n", err)
 		return
@@ -97,18 +96,6 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 	sname = *icnr.Name
 	pcc.ServerCtx = icnr.Status.ServerCtx
 
-	/* If we're doing SPNEGO, then a passed-in mechanism OID is the one we want to negotiate. */
-	if spnego {
-		fmt.Printf("Warning: set_neg_mechs is not available.\n")
-		mech = parseOid("1.3.6.1.5.5.2")
-	} else {
-		if pmech != nil {
-			mech = *pmech
-		} else {
-			mech = nil
-		}
-	}
-
 	if noauth {
 		misc.SendToken(conn, misc.TOKEN_NOOP, nil)
 	} else {
@@ -118,7 +105,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 		flags = proxy.Flags{Deleg: delegate, Sequence: seq, Replay: !noreplay, Conf: !noenc, Integ: !nomic, Mutual: !nomutual}
 		for true {
 			/* Start/continue. */
-			iscr, err := proxy.InitSecContext(pconn, pcc, &ctx, &cred, &sname, mech, flags, proxy.C_INDEFINITE, token, nil)
+			iscr, err := proxy.InitSecContext(pconn, pcc, pctx, nil, &sname, mech, flags, proxy.C_INDEFINITE, ptoken, nil)
 			if err != nil {
 				fmt.Printf("Error initializing security context: %s\n", err)
 				return
@@ -129,24 +116,26 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 				displayStatus("initializing security context", iscr.Status)
 				return
 			}
-			if iscr.Ctx != nil {
-				ctx = *iscr.Ctx
-			}
 			pcc.ServerCtx = iscr.Status.ServerCtx
+			if iscr.SecCtx != nil {
+				ctx = *iscr.SecCtx
+				pctx = &ctx
+			}
 			/* If we have an output token, we need to send it. */
-			if len(token) > 0 {
+			if iscr.OutputToken != nil {
 				if !quiet {
-					fmt.Printf("Sending init_sec_context token (size=%d)...", len(token))
+					fmt.Printf("Sending init_sec_context token (size=%d)...", len(*iscr.OutputToken))
 				}
 				if v1 {
 					tag = 0
 				} else {
 					tag = misc.TOKEN_CONTEXT
 				}
-				misc.SendToken(conn, tag, token)
+				misc.SendToken(conn, tag, *iscr.OutputToken)
 			}
 			if major == proxy.S_CONTINUE_NEEDED {
 				/* CONTINUE_NEEDED means we expect a token from the far end to be fed back in to InitSecContext(). */
+				var token []byte
 				if !quiet {
 					fmt.Printf("continue needed...")
 				}
@@ -160,6 +149,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 					}
 					break
 				}
+				ptoken = &token
 			} else {
 				/* COMPLETE means we're done, everything succeeded. */
 				if !quiet {
@@ -175,7 +165,6 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 		if !quiet {
 			displayFlags(flags, false, os.Stdout)
 		}
-		defer proxy.ReleaseSecCtx(pconn, pcc, ctx)
 
 		/* Describe the context. */
 		if ctx.LocallyInitiated {
@@ -209,11 +198,11 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 		pcc.ServerCtx = imr.Status.ServerCtx
 
 		for _, mech := range imr.Mechs {
-			if !mech.Mech.Equal(ctx.SrcName.NameType) {
+			if !mech.Mech.Equal(ctx.Mech) {
 				continue
 			}
 			if !quiet {
-				fmt.Printf("Mechanism %s supports %d names\n", mech, len(mech.NameTypes))
+				fmt.Printf("Mechanism %s supports %d names\n", mech.Mech, len(mech.NameTypes))
 			}
 			for i, nametype := range mech.NameTypes {
 				if !quiet {
@@ -230,7 +219,9 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 		if nowrap {
 			wrapped = plain
 		} else {
-			wr, err := proxy.Wrap(pconn, pcc, ctx, !noenc, plain, proxy.C_QOP_DEFAULT)
+			plains := make([][]byte, 1)
+			plains[0] = plain
+			wr, err := proxy.Wrap(pconn, pcc, ctx, !noenc, plains, proxy.C_QOP_DEFAULT)
 			if err != nil {
 				fmt.Printf("Error wrapping message: %s\n", err)
 				return
@@ -245,6 +236,11 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 				fmt.Printf("Warning!  Message not encrypted.\n")
 			}
 			pcc.ServerCtx = wr.Status.ServerCtx
+			if wr.SecCtx != nil {
+				ctx = *wr.SecCtx
+				pctx = &ctx
+			}
+			wrapped = wr.TokenBuffer[0]
 		}
 
 		tag = misc.TOKEN_DATA
@@ -280,7 +276,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 				fmt.Printf("Response received.\n")
 			}
 		} else {
-			vr, err := proxy.VerifyMic(pconn, pcc, ctx, proxy.C_QOP_DEFAULT, plain, mictoken)
+			vr, err := proxy.VerifyMic(pconn, pcc, ctx, plain, mictoken)
 			if err != nil {
 				fmt.Printf("Error verifying mic: %s\n", err)
 				return
@@ -292,6 +288,10 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 				return
 			}
 			pcc.ServerCtx = vr.Status.ServerCtx
+			if vr.SecCtx != nil {
+				ctx = *vr.SecCtx
+				pctx = &ctx
+			}
 			if !quiet {
 				fmt.Printf("Signature verified.\n")
 			}
@@ -339,7 +339,8 @@ func main() {
 	noenc := flag.Bool("nx", false, "no encryption")
 	nomic := flag.Bool("nm", false, "no MICs")
 	var plain []byte
-	var mech *asn1.ObjectIdentifier
+	var nmech *asn1.ObjectIdentifier
+	var mech asn1.ObjectIdentifier
 	var call proxy.CallCtx
 
 	flag.Parse()
@@ -374,17 +375,27 @@ func main() {
 		buffer := bytes.NewBufferString(msg)
 		plain = buffer.Bytes()
 	}
-	if *krb5 {
-		tmpmech := parseOid("1.3.5.1.5.2")
-		mech = &tmpmech
-	}
-	if *iakerb {
+	if *spnego {
+		/* If we're doing SPNEGO, then a passed-in mechanism OID is the one we want to negotiate, but we can't. */
+		fmt.Printf("Warning: set_neg_mechs is not available.\n")
+		tmpmech := parseOid("1.3.6.1.5.5.2")
+		nmech = &tmpmech
+		mech = tmpmech
+	} else if *krb5 {
+		tmpmech := parseOid("1.2.840.113554.1.2.2")
+		nmech = &tmpmech
+		mech = tmpmech
+	} else if *iakerb {
 		tmpmech := parseOid("1.3.6.1.5.2.5")
-		mech = &tmpmech
-	}
-	if len(*mechstr) > 0 {
+		nmech = &tmpmech
+		mech = tmpmech
+	} else if len(*mechstr) > 0 {
 		tmpmech := parseOid(*mechstr)
-		mech = &tmpmech
+		nmech = &tmpmech
+		mech = tmpmech
+	} else {
+		tmpmech := parseOid("1.2.840.113554.1.2.2")
+		nmech = &tmpmech
 	}
 	if *noauth {
 		*nowrap = true
@@ -400,12 +411,12 @@ func main() {
 
 	ctr, err := proxy.GetCallContext(&pconn, call, nil)
 	if err != nil {
-		fmt.Printf("Error getting a calling context: %s", sockaddr, err)
+		fmt.Printf("Error getting a calling context: %s", err)
 		return
 	}
 	call.ServerCtx = ctr.ServerCtx
 
 	for c := 0; c < *ccount; c++ {
-		connectOnce(&pconn, call, host, *port, service, *mcount, *quiet, plain, *v1, *spnego, mech, *delegate, *seq, *noreplay, *nomutual, *noauth, *nowrap, *noenc, *nomic)
+		connectOnce(&pconn, call, host, *port, service, *mcount, *quiet, plain, *v1, nmech, mech, *delegate, *seq, *noreplay, *nomutual, *noauth, *nowrap, *noenc, *nomic)
 	}
 }
