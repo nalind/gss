@@ -121,6 +121,8 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 				if verbose && logfile != nil {
 					fmt.Fprintf(logfile, "\n")
 				}
+				/* Make sure the context is cleaned up eventually. */
+				defer proxy.ReleaseSecCtx(pconn, pcc, *pctx)
 				break
 			}
 			/* Wait for another context establishment token. */
@@ -128,8 +130,6 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 				fmt.Fprintf(logfile, "continue needed...\n")
 			}
 		}
-		/* Make sure the context is cleaned up eventually. */
-		defer proxy.ReleaseSecCtx(pconn, pcc, *pctx)
 		/* Dig up information about the connection. */
 		if verbose && logfile != nil {
 			fmt.Fprintf(logfile, "Accepted connection using mechanism OID %s.\n", pctx.Mech)

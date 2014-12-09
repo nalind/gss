@@ -158,7 +158,7 @@ func RecvToken(conn net.Conn) (tag byte, token []byte) {
 
 	n, err := conn.Read(tmp)
 	if n == 0 {
-		fmt.Printf("reading token flags: 0 bytes read")
+		fmt.Printf("reading token flags: 0 bytes read\n")
 		return
 	}
 	if err != nil {
