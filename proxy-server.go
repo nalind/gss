@@ -2,6 +2,7 @@ package main
 
 import "bytes"
 import "flag"
+import "encoding/json"
 import "fmt"
 import "gss/proxy"
 import "gss/misc"
@@ -30,7 +31,6 @@ func dump(file io.Writer, data []byte) {
 
 func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, export, verbose bool, logfile io.Writer) {
 	var pctx *proxy.SecCtx
-	var cname proxy.Name
 
 	defer conn.Close()
 
@@ -152,10 +152,20 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 	}
 	/* Start processing message tokens from the client. */
 	if pctx != nil {
-		if len(cname.DisplayName) > 0 {
-			fmt.Printf("Accepted connection: \"%s\"\n", cname.DisplayName)
+		if len(pctx.SrcName.DisplayName) > 0 {
+			fmt.Printf("Accepted connection: \"%s\"\n", pctx.SrcName.DisplayName)
 		} else {
 			fmt.Printf("Accepted connection.\n")
+		}
+		if verbose {
+			name, err := json.Marshal(pctx.SrcName)
+			if err == nil {
+				var buf bytes.Buffer
+				fmt.Fprintf(logfile, "=")
+				json.Indent(&buf, name, "=", "\t")
+				buf.WriteTo(logfile)
+				fmt.Fprintf(logfile, "\n")
+			}
 		}
 	} else {
 		fmt.Printf("Accepted unauthenticated connection.\n")
