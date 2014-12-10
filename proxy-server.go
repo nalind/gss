@@ -324,30 +324,15 @@ func main() {
 			fmt.Printf("Error acquiring credentials: %s\n", err)
 			return
 		}
-		if acr.OutputCredHandle == nil {
-			fmt.Printf("No credentials acquired, continuing.\n")
-		} else {
-			cred = acr.OutputCredHandle
-		}
 		if acr.Status.MajorStatus != proxy.S_COMPLETE {
 			DisplayProxyStatus("acquiring credentials", acr.Status)
 			return
 		}
-	}
-	/* Acquire Kerberos acceptor creds. */
-	acr, err := proxy.AcquireCred(&pconn, call, cred, cred != nil, nil, proxy.C_INDEFINITE, nil, proxy.C_ACCEPT, proxy.C_INDEFINITE, proxy.C_INDEFINITE, nil)
-	if err != nil {
-		fmt.Printf("Error acquiring default credentials: %s\n", err)
-		return
-	}
-	if acr.OutputCredHandle == nil {
-		fmt.Printf("No default credentials acquired, continuing.\n")
-	} else {
-		cred = acr.OutputCredHandle
-	}
-	if acr.Status.MajorStatus != proxy.S_COMPLETE {
-		DisplayProxyStatus("acquiring credentials", acr.Status)
-		return
+		if acr.OutputCredHandle == nil {
+			fmt.Printf("No credentials acquired for \"%s\", continuing.\n", service)
+		} else {
+			cred = acr.OutputCredHandle
+		}
 	}
 	/* Don't forget to release the creds. */
 	if cred != nil {
