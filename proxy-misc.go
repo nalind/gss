@@ -13,7 +13,7 @@ func DisplayProxyStatus(when string, status proxy.Status) {
 	if len(status.MinorStatusString) > 0 {
 		fmt.Printf(" (%s)", status.MinorStatusString)
 	} else {
-		fmt.Printf(" (minor code: 0x%x)", status.MinorStatus)
+		fmt.Printf(" (minor code = 0x%x)", status.MinorStatus)
 	}
 	fmt.Printf(".\n")
 }
