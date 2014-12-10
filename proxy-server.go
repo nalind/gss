@@ -84,7 +84,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 				fmt.Printf("Expected context establishment token, got %d token instead.\n", tag)
 				return
 			}
-			ascr, err := proxy.AcceptSecContext(pconn, pcc, pctx, cred, token, false, nil)
+			ascr, err := proxy.AcceptSecContext(pconn, pcc, pctx, cred, token, nil, false, nil)
 			if err != nil {
 				fmt.Printf("Error accepting context: %s.\n", err)
 				return
@@ -158,7 +158,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 			name, err := json.Marshal(pctx.SrcName)
 			if err == nil {
 				var buf bytes.Buffer
-				fmt.Fprintf(logfile, "=")
+				fmt.Fprintf(logfile, "= Client Name = ")
 				json.Indent(&buf, name, "=", "\t")
 				buf.WriteTo(logfile)
 				fmt.Fprintf(logfile, "\n")
@@ -326,14 +326,41 @@ func main() {
 		}
 		if acr.OutputCredHandle == nil {
 			fmt.Printf("No credentials acquired, continuing.\n")
+		} else {
+			cred = acr.OutputCredHandle
 		}
 		if acr.Status.MajorStatus != proxy.S_COMPLETE {
 			DisplayProxyStatus("acquiring credentials", acr.Status)
 			return
 		}
+	}
+	/* Acquire Kerberos acceptor creds. */
+	acr, err := proxy.AcquireCred(&pconn, call, cred, cred != nil, nil, proxy.C_INDEFINITE, nil, proxy.C_ACCEPT, proxy.C_INDEFINITE, proxy.C_INDEFINITE, nil)
+	if err != nil {
+		fmt.Printf("Error acquiring default credentials: %s\n", err)
+		return
+	}
+	if acr.OutputCredHandle == nil {
+		fmt.Printf("No default credentials acquired, continuing.\n")
+	} else {
 		cred = acr.OutputCredHandle
 	}
+	if acr.Status.MajorStatus != proxy.S_COMPLETE {
+		DisplayProxyStatus("acquiring credentials", acr.Status)
+		return
+	}
+	/* Don't forget to release the creds. */
 	if cred != nil {
+		if *verbose {
+			name, err := json.Marshal(*cred)
+			if err == nil {
+				var buf bytes.Buffer
+				fmt.Fprintf(log, "= Acceptor Creds = ")
+				json.Indent(&buf, name, "=", "\t")
+				buf.WriteTo(log)
+				fmt.Fprintf(log, "\n")
+			}
+		}
 		defer proxy.ReleaseCred(&pconn, call, *cred)
 	}
 

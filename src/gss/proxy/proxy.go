@@ -101,6 +101,12 @@ var (
 	NT_HOSTBASED_SERVICE_X = parseOid("1.3.6.1.5.6.2")
 	NT_ANONYMOUS           = parseOid("1.3.6.1.5.6.3")
 	NT_EXPORT_NAME         = parseOid("1.3.6.1.5.6.4")
+
+	/* Known mechanisms. */
+	mechKerberos5 = parseOid("1.2.840.113554.1.2.2")
+	mechKerberos5Draft = parseOid("1.3.5.1.5.2")
+	mechSPNEGO = parseOid("1.3.6.1.5.5.2")
+	mechIAKERB = parseOid("1.3.6.1.5.2.5")
 )
 
 func parseOid(oids string) (oid asn1.ObjectIdentifier) {
@@ -831,7 +837,7 @@ type ImportAndCanonNameResults struct {
 	Options []Option
 }
 
-/* ImportAndCanonName imports and canonicalizes a name. */
+/* ImportAndCanonName imports and canonicalizes a name.  An uncanonicalized name can be used after its DisplayName and NameType are initialized, so this function is not always used. */
 func ImportAndCanonName(conn *net.Conn, callCtx CallCtx, name Name, mech asn1.ObjectIdentifier, nameAttrs []NameAttr, options []Option) (results ImportAndCanonNameResults, err error) {
 	var args struct {
 		CallCtx   CallCtx
@@ -966,7 +972,7 @@ type ImportCredResults struct {
 	Options          []Option
 }
 
-/* ImportCred constructs a credential structure from a byte slice. */
+/* ImportCred reconstructs a credential structure from a byte slice. */
 func ImportCred(conn *net.Conn, callCtx CallCtx, exportedCred []byte, options []Option) (results ImportCredResults, err error) {
 	var args struct {
 		CallCtx      CallCtx
@@ -1024,7 +1030,7 @@ type AcquireCredResults struct {
 	Options          []Option
 }
 
-/* AcquireCred adds credentials to a credential structure, possibly creating one. */
+/* AcquireCred adds non-default credentials, or credentials using non-default settings, to a credential structure, possibly creating one. */
 func AcquireCred(conn *net.Conn, callCtx CallCtx, inputCredHandle *Cred, addCredToInputHandle bool, desiredName *Name, timeReq uint64, desiredMechs []asn1.ObjectIdentifier, credUsage int, initiatorTimeReq, acceptorTimeReq uint64, options []Option) (results AcquireCredResults, err error) {
 	var args struct {
 		CallCtx                           CallCtx
@@ -1195,8 +1201,8 @@ type InitSecContextResults struct {
 	Options     []Option
 }
 
-/* InitSecContext initiates a security context with a peer. */
-func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, targetName *Name, mechType asn1.ObjectIdentifier, reqFlags Flags, timeReq uint64, inputToken *[]byte, options []Option) (results InitSecContextResults, err error) {
+/* InitSecContext initiates a security context with a peer.  If the returned Status.MajorStatus is S_CONTINUE_NEEDED, the function should be called again with a token obtained from the peer.  If the OutputToken is not nil, then it should be sent to the peer.  If the returned Status.MajorStatus is S_COMPLETE, then authentication has succeeded.  Any other Status.MajorStatus value is an error. */
+func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, targetName *Name, mechType asn1.ObjectIdentifier, reqFlags Flags, timeReq uint64, inputCB, inputToken *[]byte, options []Option) (results InitSecContextResults, err error) {
 	var args struct {
 		CallCtx           CallCtx
 		Ctx               []rawSecCtx
@@ -1204,7 +1210,7 @@ func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, ta
 		TargetName        []rawName
 		MechType          []byte
 		ReqFlags, TimeReq uint64
-		InputCB           []byte
+		InputCB           [][]byte
 		InputToken        [][]byte
 		Options           []Option
 	}
@@ -1260,6 +1266,12 @@ func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, ta
 	}
 	args.ReqFlags = uncookFlags(reqFlags)
 	args.TimeReq = timeReq
+	if inputCB != nil {
+		args.InputCB = make([][]byte, 1)
+		args.InputCB[0] = *inputCB
+	} else {
+		args.InputCB = make([][]byte, 0)
+	}
 	if inputToken != nil {
 		args.InputToken = make([][]byte, 1)
 		args.InputToken[0] = *inputToken
@@ -1311,14 +1323,14 @@ type AcceptSecContextResults struct {
 	Options             []Option
 }
 
-/* AcceptSecContext accepts a security context initiated by a peer. */
-func AcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, inputToken []byte, retDelegCred bool, options []Option) (results AcceptSecContextResults, err error) {
+/* AcceptSecContext accepts a security context initiated a peer.  If the returned Status.MajorStatus is S_CONTINUE_NEEDED, the function should be called again with a token obtained from the peer.  If the OutputToken is not nil, then it should be sent to the peer.  If the returned Status.MajorStatus is S_COMPLETE, then authentication has succeeded.  Any other Status.MajorStatus value is an error. */
+func AcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, inputToken []byte, inputCB *[]byte, retDelegCred bool, options []Option) (results AcceptSecContextResults, err error) {
 	var args struct {
 		CallCtx      CallCtx
 		Ctx          []rawSecCtx
 		Cred         []rawCred
 		InputToken   []byte
-		InputCB      []byte
+		InputCB      [][]byte
 		RetDelegCred bool
 		Options      []Option
 	}
@@ -1358,6 +1370,12 @@ func AcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, 
 		args.Cred = make([]rawCred, 0)
 	}
 	args.InputToken = inputToken
+	if inputCB != nil {
+		args.InputCB = make([][]byte, 1)
+		args.InputCB[0] = *inputCB
+	} else {
+		args.InputCB = make([][]byte, 0)
+	}
 	args.RetDelegCred = retDelegCred
 	args.Options = options
 	_, err = xdr.Marshal(&cbuf, &args)
@@ -1504,7 +1522,7 @@ type GetMicResults struct {
 	QopState    uint64
 }
 
-/* GetMic computes an integrity checksum over the passed-in message. */
+/* GetMic computes an integrity checksum over the passed-in message and returns the checksum.  If a SecCtx is returned, then the passed-in ctx value should be discarded in its favor. */
 func GetMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, qopReq uint64, message []byte) (results GetMicResults, err error) {
 	var args struct {
 		CallCtx       CallCtx
@@ -1571,7 +1589,7 @@ type VerifyMicResults struct {
 	QopState uint64
 }
 
-/* VerifyMic checks an already-computed integrity checksum over the passed-in message. */
+/* VerifyMic checks an already-computed integrity checksum over the passed-in plaintext.  If a SecCtx is returned, then the passed-in ctx value should be discarded in its favor. */
 func VerifyMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, messageBuffer, tokenBuffer []byte) (results VerifyMicResults, err error) {
 	var args struct {
 		CallCtx                    CallCtx
@@ -1637,7 +1655,7 @@ type WrapResults struct {
 	QopState    uint64
 }
 
-/* Wrap applies protection to plaintext, optionally using confidentiality. */
+/* Wrap applies protection to plaintext, optionally using confidentiality, and returns a suitably encapsulated copy of the plaintext.  If a SecCtx is returned, then the passed-in ctx value should be discarded in its favor. */
 func Wrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, confReq bool, message [][]byte, qopState uint64) (results WrapResults, err error) {
 	var args struct {
 		CallCtx       CallCtx
@@ -1712,7 +1730,7 @@ type UnwrapResults struct {
 	QopState    uint64
 }
 
-/* Unwrap verifies protection on plaintext, optionally removing a confidentiality layer. */
+/* Unwrap verifies protection on plaintext, optionally removing a confidentiality layer, and returns the plaintext.  If a SecCtx is returned, then the passed-in ctx value should be discarded in its favor. */
 func Unwrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, message [][]byte, qopReq uint64) (results UnwrapResults, err error) {
 	var args struct {
 		CallCtx       CallCtx

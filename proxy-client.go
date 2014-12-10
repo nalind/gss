@@ -58,7 +58,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 		flags = proxy.Flags{Deleg: delegate, Sequence: seq, Replay: !noreplay, Conf: !noenc, Integ: !nomic, Mutual: !nomutual}
 		for true {
 			/* Start/continue. */
-			iscr, err := proxy.InitSecContext(pconn, pcc, pctx, nil, &sname, mech, flags, proxy.C_INDEFINITE, ptoken, nil)
+			iscr, err := proxy.InitSecContext(pconn, pcc, pctx, nil, &sname, mech, flags, proxy.C_INDEFINITE, nil, ptoken, nil)
 			if err != nil {
 				fmt.Printf("Error initializing security context: %s\n", err)
 				return
