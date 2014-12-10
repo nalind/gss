@@ -43,7 +43,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 			return
 		}
 		if icnr.Status.MajorStatus != 0 {
-			misc.DisplayProxyStatus("importing remote service name", icnr.Status)
+			DisplayProxyStatus("importing remote service name", icnr.Status)
 			return
 		}
 		sname = *icnr.Name
@@ -66,7 +66,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 			status = iscr.Status
 			major = status.MajorStatus
 			if major != proxy.S_COMPLETE && major != proxy.S_CONTINUE_NEEDED {
-				misc.DisplayProxyStatus("initializing security context", iscr.Status)
+				DisplayProxyStatus("initializing security context", iscr.Status)
 				return
 			}
 			if iscr.SecCtx != nil {
@@ -115,7 +115,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 			return
 		}
 		if !quiet {
-			misc.DisplayProxyFlags(flags, false, os.Stdout)
+			DisplayProxyFlags(flags, false, os.Stdout)
 		}
 
 		/* Describe the context. */
@@ -144,7 +144,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 		status = imr.Status
 		major = status.MajorStatus
 		if major != proxy.S_COMPLETE && major != proxy.S_CONTINUE_NEEDED {
-			misc.DisplayProxyStatus("indicating mechanisms", imr.Status)
+			DisplayProxyStatus("indicating mechanisms", imr.Status)
 			return
 		}
 
@@ -180,7 +180,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 			status = wr.Status
 			major = status.MajorStatus
 			if major != proxy.S_COMPLETE {
-				misc.DisplayProxyStatus("wrapping data", status)
+				DisplayProxyStatus("wrapping data", status)
 				return
 			}
 			if !noenc && !wr.ConfState && !quiet {
@@ -234,7 +234,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 			status = vr.Status
 			major = status.MajorStatus
 			if major != proxy.S_COMPLETE {
-				misc.DisplayProxyStatus("verifying signature", status)
+				DisplayProxyStatus("verifying signature", status)
 				return
 			}
 			if vr.SecCtx != nil {
@@ -314,6 +314,7 @@ func main() {
 		nmech = &tmpmech
 		mech = tmpmech
 	} else if *krb5 {
+		/* This is the OID from the RFC.  The native tests would use the pre-RFC OID. */
 		tmpmech := misc.ParseOid("1.2.840.113554.1.2.2")
 		nmech = &tmpmech
 		mech = tmpmech
@@ -344,7 +345,7 @@ func main() {
 		return
 	}
 	if gccr.Status.MajorStatus != proxy.S_COMPLETE {
-		misc.DisplayProxyStatus("getting calling context", gccr.Status)
+		DisplayProxyStatus("getting calling context", gccr.Status)
 		return
 	}
 

@@ -55,7 +55,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 					return
 				}
 				if ecr.Status.MajorStatus != proxy.S_COMPLETE {
-					misc.DisplayProxyStatus("exporting a credential", ecr.Status)
+					DisplayProxyStatus("exporting a credential", ecr.Status)
 					return
 				}
 				icr, err := proxy.ImportCred(pconn, pcc, ecr.ExportedHandle, nil)
@@ -64,7 +64,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 					return
 				}
 				if icr.Status.MajorStatus != proxy.S_COMPLETE {
-					misc.DisplayProxyStatus("importing a credential", icr.Status)
+					DisplayProxyStatus("importing a credential", icr.Status)
 					return
 				}
 				cred = icr.OutputCredHandle
@@ -84,13 +84,13 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 				fmt.Printf("Expected context establishment token, got %d token instead.\n", tag)
 				return
 			}
-			ascr, err := proxy.AcceptSecContext(pconn, pcc, pctx, cred, token, true, nil)
+			ascr, err := proxy.AcceptSecContext(pconn, pcc, pctx, cred, token, false, nil)
 			if err != nil {
 				fmt.Printf("Error accepting context: %s.\n", err)
 				return
 			}
 			if ascr.Status.MajorStatus != proxy.S_COMPLETE && ascr.Status.MajorStatus != proxy.S_CONTINUE_NEEDED {
-				misc.DisplayProxyStatus("accepting a context", ascr.Status)
+				DisplayProxyStatus("accepting a context", ascr.Status)
 				return
 			}
 			if ascr.SecCtx != nil {
@@ -112,7 +112,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 					return
 				}
 				if rcr.Status.MajorStatus != proxy.S_COMPLETE {
-					misc.DisplayProxyStatus("releasing delegated credentials", rcr.Status)
+					DisplayProxyStatus("releasing delegated credentials", rcr.Status)
 					return
 				}
 			}
@@ -209,7 +209,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 				return
 			}
 			if ur.Status.MajorStatus != proxy.S_COMPLETE {
-				misc.DisplayProxyStatus("unwrapping token", ur.Status)
+				DisplayProxyStatus("unwrapping token", ur.Status)
 				return
 			}
 			if ur.SecCtx != nil {
@@ -241,7 +241,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 				return
 			}
 			if gmr.Status.MajorStatus != proxy.S_COMPLETE {
-				misc.DisplayProxyStatus("unwrapping token", gmr.Status)
+				DisplayProxyStatus("unwrapping token", gmr.Status)
 				return
 			}
 			if gmr.SecCtx != nil {
@@ -261,19 +261,22 @@ func main() {
 	once := flag.Bool("once", false, "single-connection mode")
 	export := flag.Bool("export", false, "export/reimport the context")
 	logfile := flag.String("logfile", "/dev/stdout", "log file for details")
-	var sname proxy.Name
+	var cred *proxy.Cred
 	var call proxy.CallCtx
 	var log *os.File
 	var err error
 
 	flag.Parse()
-	if flag.NArg() < 2 {
-		fmt.Printf("Usage: gss-server [options] socket gss-service-name\n")
+	if flag.NArg() < 1 {
+		fmt.Printf("Usage: gss-server [options] socket [gss-service-name]\n")
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
 	sockaddr := flag.Arg(0)
-	service := flag.Arg(1)
+	service := ""
+	if flag.NArg() > 1 {
+		service = flag.Arg(1)
+	}
 
 	/* Open the log file. */
 	if logfile != nil {
@@ -298,7 +301,7 @@ func main() {
 		return
 	}
 	if gccr.Status.MajorStatus != proxy.S_COMPLETE {
-		misc.DisplayProxyStatus("getting calling context", gccr.Status)
+		DisplayProxyStatus("getting calling context", gccr.Status)
 		return
 	}
 
@@ -310,37 +313,26 @@ func main() {
 	}
 	defer listener.Close()
 
-	/* Set up the server's name. */
-	sname.DisplayName = service
-	sname.NameType = proxy.NT_HOSTBASED_SERVICE
-	if false {
-		icnr, err := proxy.ImportAndCanonName(&pconn, call, sname, nil, nil, nil)
-		if err != nil {
-			fmt.Printf("Error importing name: %s\n", err)
-			return
-		}
-		if icnr.Status.MajorStatus != proxy.S_COMPLETE {
-			misc.DisplayProxyStatus("importing name", icnr.Status)
-			return
-		}
-		sname = *icnr.Name
-	}
+	/* Acquire acceptor creds, if we were given a name. */
+	if len(service) > 0 {
+		sname := new(proxy.Name)
+		sname.DisplayName = service
+		sname.NameType = proxy.NT_HOSTBASED_SERVICE
 
-	/* Make sure we have acceptor creds for the service name. */
-	acr, err := proxy.AcquireCred(&pconn, call, nil, false, &sname, proxy.C_INDEFINITE, nil, proxy.C_ACCEPT, proxy.C_INDEFINITE, proxy.C_INDEFINITE, nil)
-	if err != nil {
-		fmt.Printf("Error acquiring credentials: %s\n", err)
-		return
+		acr, err := proxy.AcquireCred(&pconn, call, nil, false, sname, proxy.C_INDEFINITE, nil, proxy.C_ACCEPT, proxy.C_INDEFINITE, proxy.C_INDEFINITE, nil)
+		if err != nil {
+			fmt.Printf("Error acquiring credentials: %s\n", err)
+			return
+		}
+		if acr.OutputCredHandle == nil {
+			fmt.Printf("No credentials acquired, continuing.\n")
+		}
+		if acr.Status.MajorStatus != proxy.S_COMPLETE {
+			DisplayProxyStatus("acquiring credentials", acr.Status)
+			return
+		}
+		cred = acr.OutputCredHandle
 	}
-	if acr.OutputCredHandle == nil {
-		fmt.Printf("No credentials acquired.\n")
-		return
-	}
-	if acr.Status.MajorStatus != proxy.S_COMPLETE {
-		misc.DisplayProxyStatus("acquiring credentials", acr.Status)
-		return
-	}
-	cred := acr.OutputCredHandle
 	if cred != nil {
 		defer proxy.ReleaseCred(&pconn, call, *cred)
 	}
