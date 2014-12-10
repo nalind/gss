@@ -67,7 +67,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 					DisplayProxyStatus("importing a credential", icr.Status)
 					return
 				}
-				cred = icr.OutputCredHandle
+				*cred = *icr.OutputCredHandle
 			}
 		}
 		for {
@@ -334,19 +334,16 @@ func main() {
 			cred = acr.OutputCredHandle
 		}
 	}
-	/* Don't forget to release the creds. */
-	if cred != nil {
-		if *verbose {
-			name, err := json.Marshal(*cred)
-			if err == nil {
-				var buf bytes.Buffer
-				fmt.Fprintf(log, "= Acceptor Creds = ")
-				json.Indent(&buf, name, "=", "\t")
-				buf.WriteTo(log)
-				fmt.Fprintf(log, "\n")
-			}
+	/* Log the creds, such as they are. */
+	if cred != nil && *verbose {
+		name, err := json.Marshal(*cred)
+		if err == nil {
+			var buf bytes.Buffer
+			fmt.Fprintf(log, "= Acceptor Creds = ")
+			json.Indent(&buf, name, "=", "\t")
+			buf.WriteTo(log)
+			fmt.Fprintf(log, "\n")
 		}
-		defer proxy.ReleaseCred(&pconn, call, *cred)
 	}
 
 	fmt.Printf("starting...\n")
@@ -368,6 +365,9 @@ func main() {
 			}
 			go serve(&pconn, call, conn, cred, *export, *verbose, log)
 		}
+	}
+	if cred != nil {
+		proxy.ReleaseCred(&pconn, call, *cred)
 	}
 	return
 }
