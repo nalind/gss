@@ -103,10 +103,10 @@ var (
 	NT_EXPORT_NAME         = parseOid("1.3.6.1.5.6.4")
 
 	/* Known mechanisms. */
-	mechKerberos5 = parseOid("1.2.840.113554.1.2.2")
+	mechKerberos5      = parseOid("1.2.840.113554.1.2.2")
 	mechKerberos5Draft = parseOid("1.3.5.1.5.2")
-	mechSPNEGO = parseOid("1.3.6.1.5.5.2")
-	mechIAKERB = parseOid("1.3.6.1.5.2.5")
+	mechSPNEGO         = parseOid("1.3.6.1.5.5.2")
+	mechIAKERB         = parseOid("1.3.6.1.5.2.5")
 )
 
 func parseOid(oids string) (oid asn1.ObjectIdentifier) {
