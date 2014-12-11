@@ -109,14 +109,14 @@ var (
 	NT_EXPORT_NAME         = parseOid("1.3.6.1.5.6.4")
 
 	/* Known mechanisms. */
-	mechKerberos5      = parseOid("1.2.840.113554.1.2.2")
-	mechKerberos5Draft = parseOid("1.3.5.1.5.2")
-	mechKerberos5Wrong = parseOid("1.2.840.48018.1.2.2")
-	mechSPNEGO         = parseOid("1.3.6.1.5.5.2")
-	mechIAKERB         = parseOid("1.3.6.1.5.2.5")
+	MechKerberos5      = parseOid("1.2.840.113554.1.2.2")
+	MechKerberos5Draft = parseOid("1.3.5.1.5.2")
+	MechKerberos5Wrong = parseOid("1.2.840.48018.1.2.2")
+	MechSPNEGO         = parseOid("1.3.6.1.5.5.2")
+	MechIAKERB         = parseOid("1.3.6.1.5.2.5")
 
 	/* The default mechanism list for SPNEGO. */
-	defaultSPNEGOMechs = []asn1.ObjectIdentifier{mechKerberos5, mechKerberos5Draft, mechKerberos5Wrong}
+	defaultSPNEGOMechs = []asn1.ObjectIdentifier{MechKerberos5, MechKerberos5Draft, MechKerberos5Wrong}
 )
 
 type initialNegContextToken struct {
@@ -835,7 +835,7 @@ type GetCallContextResults struct {
 	Options   []Option
 }
 
-/* GetCallContext returns a ServerCtx value which should be used in subsequent calls to this proxy server. */
+/* GetCallContext returns a ServerCtx value which should be used in subsequent calls to this proxy server.  As of this writing, the proxy implementation is a no-op. */
 func GetCallContext(conn *net.Conn, callCtx CallCtx, options []Option) (results GetCallContextResults, err error) {
 	var args struct {
 		CallCtx CallCtx
@@ -949,7 +949,7 @@ type ExportCredResults struct {
 	Options        []Option
 }
 
-/* ExportCred converts a credential structure into a byte slice. */
+/* ExportCred converts a credential structure into a byte slice.  As of this writing, the proxy implementation is a no-op. */
 func ExportCred(conn *net.Conn, callCtx CallCtx, cred Cred, credUsage int, options []Option) (results ExportCredResults, err error) {
 	var args struct {
 		CallCtx   CallCtx
@@ -1007,7 +1007,7 @@ type ImportCredResults struct {
 	Options          []Option
 }
 
-/* ImportCred reconstructs a credential structure from a byte slice. */
+/* ImportCred reconstructs a credential structure from a byte slice.  As of this writing, the proxy implementation is a no-op. */
 func ImportCred(conn *net.Conn, callCtx CallCtx, exportedCred []byte, options []Option) (results ImportCredResults, err error) {
 	var args struct {
 		CallCtx      CallCtx
@@ -1163,7 +1163,7 @@ type StoreCredResults struct {
 	Options         []Option
 }
 
-/* StoreCred stores credentials for a specific mechanism and which are intended for a specific use in the default credential store, optionally overwriting other credentials which may already be present, and also optionally making them the default credentials. */
+/* StoreCred stores credentials for a specific mechanism and which are intended for a specific use in the default credential store, optionally overwriting other credentials which may already be present, and also optionally making them the default credentials.  As of this writing, the proxy implementation is a no-op. */
 func StoreCred(conn *net.Conn, callCtx CallCtx, cred Cred, credUsage int, desiredMech asn1.ObjectIdentifier, overwriteCred, defaultCred bool, options []Option) (results StoreCredResults, err error) {
 	var args struct {
 		CallCtx            CallCtx
@@ -1242,7 +1242,7 @@ func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, ta
 	var resp negTokenResp
 	var token []byte
 
-	if len(mechType) == 0 || !mechType.Equal(mechSPNEGO) {
+	if len(mechType) == 0 || !mechType.Equal(MechSPNEGO) {
 		return proxyInitSecContext(conn, callCtx, ctx, cred, targetName, mechType, reqFlags, timeReq, inputCB, inputToken, options)
 	}
 
@@ -1266,7 +1266,7 @@ func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, ta
 				results.Status.MajorStatusString = fmt.Sprintf("bad SPNEGO preferred mechanism [%s]", resp.SupportedMech)
 				return
 			} else {
-				if !resp.SupportedMech.Equal(mechKerberos5) && !resp.SupportedMech.Equal(mechKerberos5Draft) && !resp.SupportedMech.Equal(mechKerberos5Wrong) {
+				if !resp.SupportedMech.Equal(MechKerberos5) && !resp.SupportedMech.Equal(MechKerberos5Draft) && !resp.SupportedMech.Equal(MechKerberos5Wrong) {
 					/* Not a Kerberos mech. */
 					results.Status.MajorStatus = S_BAD_MECH
 					results.Status.MajorStatusString = fmt.Sprintf("bad SPNEGO preferred mechanism [%s]", resp.SupportedMech)
@@ -1311,7 +1311,7 @@ func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, ta
 	}
 	/* Create an SPNEGO token if there's data to send. */
 	if results.OutputToken != nil {
-		inct.ThisMech = mechSPNEGO
+		inct.ThisMech = MechSPNEGO
 		if cred != nil && cred.negotiateMechs != nil && len(*cred.negotiateMechs) > 0 {
 			inct.NegTokenInit.MechTypes = *cred.negotiateMechs
 		} else {
@@ -1462,12 +1462,12 @@ func AcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, 
 
 	/* Try to parse it as an SPNEGO initiator token. */
 	_, err = asn1.UnmarshalWithParams(inputToken, &ict, "application,tag:0")
-	if err != nil || !ict.ThisMech.Equal(mechSPNEGO) || len(ict.NegTokenInit.MechTypes) == 0 {
+	if err != nil || !ict.ThisMech.Equal(MechSPNEGO) || len(ict.NegTokenInit.MechTypes) == 0 {
 		return proxyAcceptSecContext(conn, callCtx, ctx, cred, inputToken, inputCB, retDelegCred, options)
 	}
 	/* Check if the client's requested one of our preferred mechanisms. */
 	preferredMech := ict.NegTokenInit.MechTypes[0]
-	if preferredMech.Equal(mechKerberos5) || preferredMech.Equal(mechKerberos5Draft) || preferredMech.Equal(mechKerberos5Wrong) {
+	if preferredMech.Equal(MechKerberos5) || preferredMech.Equal(MechKerberos5Draft) || preferredMech.Equal(MechKerberos5Wrong) {
 		/* Pass the mechanism-specific token on to the proxy. */
 		results, err = proxyAcceptSecContext(conn, callCtx, ctx, cred, ict.NegTokenInit.MechToken, inputCB, retDelegCred, options)
 		if err == nil {

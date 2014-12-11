@@ -46,30 +46,6 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 		return
 	}
 	if (tag & misc.TOKEN_CONTEXT_NEXT) != 0 {
-		/* Optionally export/reimport the acceptor cred a few times. */
-		if export && cred != nil {
-			for i := 0; i < 3; i++ {
-				ecr, err := proxy.ExportCred(pconn, pcc, *cred, 0, nil)
-				if err != nil {
-					fmt.Fprintf(logfile, "Error exporting credential: %s\n", err)
-					return
-				}
-				if ecr.Status.MajorStatus != proxy.S_COMPLETE {
-					DisplayProxyStatus("exporting a credential", ecr.Status)
-					return
-				}
-				icr, err := proxy.ImportCred(pconn, pcc, ecr.ExportedHandle, nil)
-				if err != nil {
-					fmt.Fprintf(logfile, "Error importing credential: %s\n", err)
-					return
-				}
-				if icr.Status.MajorStatus != proxy.S_COMPLETE {
-					DisplayProxyStatus("importing a credential", icr.Status)
-					return
-				}
-				*cred = *icr.OutputCredHandle
-			}
-		}
 		for {
 			/* Expect a context establishment token. */
 			tag, token := misc.RecvToken(conn)
@@ -105,7 +81,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 				misc.SendToken(conn, misc.TOKEN_CONTEXT, *ascr.OutputToken)
 			}
 			/* We never use delegated creds, so if we got some, just make sure they get cleaned up. */
-			if ascr.DelegatedCredHandle != nil {
+			if ascr.DelegatedCredHandle != nil && ascr.DelegatedCredHandle.NeedsRelease {
 				rcr, err := proxy.ReleaseCred(pconn, pcc, *ascr.DelegatedCredHandle)
 				if err != nil {
 					fmt.Printf("Error releasing delegated creds: %s.\n", err)
@@ -327,15 +303,45 @@ func main() {
 		}
 	}
 
-	/* Log the creds, such as they are. */
-	if cred != nil && *verbose {
-		name, err := json.Marshal(*cred)
-		if err == nil {
-			var buf bytes.Buffer
-			fmt.Fprintf(log, "= Acceptor Creds = ")
-			json.Indent(&buf, name, "=", "\t")
-			buf.WriteTo(log)
-			fmt.Fprintf(log, "\n")
+	if cred != nil {
+		/* Log the creds, such as they are. */
+		if *verbose {
+			name, err := json.Marshal(*cred)
+			if err == nil {
+				var buf bytes.Buffer
+				fmt.Fprintf(log, "= Acceptor Creds = ")
+				json.Indent(&buf, name, "=", "\t")
+				buf.WriteTo(log)
+				fmt.Fprintf(log, "\n")
+			}
+		}
+		/* Optionally export/reimport the acceptor cred a few times. */
+		if *export {
+			for i := 0; i < 3; i++ {
+				ecr, err := proxy.ExportCred(&pconn, call, *cred, 0, nil)
+				if err != nil {
+					fmt.Fprintf(log, "Error exporting credential: %s\n", err)
+					return
+				}
+				if ecr.Status.MajorStatus != proxy.S_COMPLETE {
+					DisplayProxyStatus("exporting a credential", ecr.Status)
+					return
+				}
+				if len(ecr.ExportedHandle) == 0 {
+					fmt.Fprintf(log, "ExportCred() succeeded but produced nothing.\n")
+					return
+				}
+				icr, err := proxy.ImportCred(&pconn, call, ecr.ExportedHandle, nil)
+				if err != nil {
+					fmt.Fprintf(log, "Error importing credential: %s\n", err)
+					return
+				}
+				if icr.Status.MajorStatus != proxy.S_COMPLETE {
+					DisplayProxyStatus("importing a credential", icr.Status)
+					return
+				}
+				cred = icr.OutputCredHandle
+			}
 		}
 	}
 
@@ -368,7 +374,7 @@ func main() {
 			go serve(&pconn, call, conn, cred, *export, *verbose, log)
 		}
 	}
-	if cred != nil {
+	if cred != nil && cred.NeedsRelease {
 		proxy.ReleaseCred(&pconn, call, *cred)
 	}
 	return
