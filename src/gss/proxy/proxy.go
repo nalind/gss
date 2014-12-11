@@ -90,6 +90,12 @@ const (
 
 	/* Default quality of protection. */
 	C_QOP_DEFAULT = 0
+
+	/* SPNEGO status codes. */
+	negStateAcceptCompleted  = 0
+	negStateAcceptIncomplete = 1
+	negStateReject           = 2
+	negStateRequestMic       = 3
 )
 
 var (
@@ -105,9 +111,36 @@ var (
 	/* Known mechanisms. */
 	mechKerberos5      = parseOid("1.2.840.113554.1.2.2")
 	mechKerberos5Draft = parseOid("1.3.5.1.5.2")
+	mechKerberos5Wrong = parseOid("1.2.840.48018.1.2.2")
 	mechSPNEGO         = parseOid("1.3.6.1.5.5.2")
 	mechIAKERB         = parseOid("1.3.6.1.5.2.5")
+
+	/* The default mechanism list for SPNEGO. */
+	defaultSPNEGOMechs = []asn1.ObjectIdentifier{mechKerberos5, mechKerberos5Draft, mechKerberos5Wrong}
 )
+
+type initialNegContextToken struct {
+	ThisMech     asn1.ObjectIdentifier
+	NegTokenInit negTokenInit `asn1:"explicit,tag:0"`
+}
+type negTokenInit struct {
+	MechTypes   []asn1.ObjectIdentifier `asn1:"explicit,tag:0"`
+	ReqFlags    asn1.BitString          `asn1:"optional,explicit,tag:1"`
+	MechToken   []byte                  `asn1:"optional,explicit,tag:2"`
+	MechListMic []byte                  `asn1:"optional,explicit,tag:3"`
+}
+type negTokenResp struct {
+	NegState      asn1.Enumerated       `asn1:"explicit,tag:0"`
+	SupportedMech asn1.ObjectIdentifier `asn1:"optional,explicit,tag:1"`
+	ResponseToken []byte                `asn1:"optional,explicit,tag:2"`
+	MechListMic   []byte                `asn1:"optional,explicit,tag:3"`
+}
+type negotiateInit struct {
+	NegTokenInit negTokenInit `asn1:"explicit,tag:0"`
+}
+type negotiateResp struct {
+	NegTokenResp negTokenResp `asn1:"explicit,tag:1"`
+}
 
 func parseOid(oids string) (oid asn1.ObjectIdentifier) {
 	components := strings.Split(oids, ".")
@@ -621,6 +654,7 @@ type Cred struct {
 	Elements            []CredElement
 	CredHandleReference []byte
 	NeedsRelease        bool
+	negotiateMechs      *[]asn1.ObjectIdentifier
 }
 
 func uncookCred(c Cred) (raw rawCred, err error) {
@@ -1204,6 +1238,102 @@ type InitSecContextResults struct {
 
 /* InitSecContext initiates a security context with a peer.  If the returned Status.MajorStatus is S_CONTINUE_NEEDED, the function should be called again with a token obtained from the peer.  If the OutputToken is not nil, then it should be sent to the peer.  If the returned Status.MajorStatus is S_COMPLETE, then authentication has succeeded.  Any other Status.MajorStatus value is an error. */
 func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, targetName *Name, mechType asn1.ObjectIdentifier, reqFlags Flags, timeReq uint64, inputCB, inputToken *[]byte, options []Option) (results InitSecContextResults, err error) {
+	var inct initialNegContextToken
+	var resp negTokenResp
+	var token []byte
+
+	if len(mechType) == 0 || !mechType.Equal(mechSPNEGO) {
+		return proxyInitSecContext(conn, callCtx, ctx, cred, targetName, mechType, reqFlags, timeReq, inputCB, inputToken, options)
+	}
+
+	if inputToken != nil {
+		/* Parse a reply from the peer. */
+		_, err = asn1.UnmarshalWithParams(*inputToken, &resp, "explicit,tag:1")
+		if err != nil {
+			return proxyInitSecContext(conn, callCtx, ctx, cred, targetName, mechType, reqFlags, timeReq, inputCB, inputToken, options)
+		}
+		/* Check that we're still okay. */
+		if resp.NegState != negStateAcceptCompleted && resp.NegState != negStateAcceptIncomplete {
+			results.Status.MajorStatus = S_BAD_STATUS
+			results.Status.MajorStatusString = fmt.Sprintf("SPNEGO status %d not handled by this implementation", resp.NegState)
+			return
+		}
+		/* If there's a mech indicated, check that it's one that we wanted. */
+		if len(resp.SupportedMech) > 0 {
+			if cred != nil && cred.negotiateMechs != nil && len(*cred.negotiateMechs) > 0 && (*cred.negotiateMechs)[0].Equal(resp.SupportedMech) {
+				/* Not our preferred specified mech. */
+				results.Status.MajorStatus = S_BAD_MECH
+				results.Status.MajorStatusString = fmt.Sprintf("bad SPNEGO preferred mechanism [%s]", resp.SupportedMech)
+				return
+			} else {
+				if !resp.SupportedMech.Equal(mechKerberos5) && !resp.SupportedMech.Equal(mechKerberos5Draft) && !resp.SupportedMech.Equal(mechKerberos5Wrong) {
+					/* Not a Kerberos mech. */
+					results.Status.MajorStatus = S_BAD_MECH
+					results.Status.MajorStatusString = fmt.Sprintf("bad SPNEGO preferred mechanism [%s]", resp.SupportedMech)
+					return
+				} else {
+					/* It's a mech that we wanted. */
+					inputToken = &resp.ResponseToken
+					mechType = resp.SupportedMech
+				}
+			}
+		} else {
+			/* Just assume it's the right mech and the proxy knows what to do with the inner token. */
+			inputToken = &resp.ResponseToken
+			mechType = defaultSPNEGOMechs[0]
+		}
+	} else {
+		/* First time through, specify which mech to use. */
+		if cred != nil && cred.negotiateMechs != nil && len(*cred.negotiateMechs) > 0 {
+			mechType = (*cred.negotiateMechs)[0]
+		} else {
+			mechType = defaultSPNEGOMechs[0]
+		}
+	}
+	/* Call the real mechanism. */
+	results, err = proxyInitSecContext(conn, callCtx, ctx, cred, targetName, mechType, reqFlags, timeReq, inputCB, inputToken, options)
+	if results.Status.MajorStatus != S_COMPLETE && results.Status.MajorStatus != S_CONTINUE_NEEDED {
+		return
+	}
+	if inputToken != nil {
+		if resp.NegState == negStateAcceptCompleted && results.OutputToken != nil {
+			/* Peer is not expecting more data, but we have some to send. */
+			results.Status.MajorStatus = S_BAD_STATUS
+			results.Status.MajorStatusString = "have SPNEGO data to send, but peer expects none"
+			return
+		}
+		if resp.NegState == negStateAcceptIncomplete && results.OutputToken == nil {
+			/* Peer is expecting more data, but we have none to send. */
+			results.Status.MajorStatus = S_BAD_STATUS
+			results.Status.MajorStatusString = "have no SPNEGO data to send, but peer expects some"
+			return
+		}
+	}
+	/* Create an SPNEGO token if there's data to send. */
+	if results.OutputToken != nil {
+		inct.ThisMech = mechSPNEGO
+		if cred != nil && cred.negotiateMechs != nil && len(*cred.negotiateMechs) > 0 {
+			inct.NegTokenInit.MechTypes = *cred.negotiateMechs
+		} else {
+			inct.NegTokenInit.MechTypes = defaultSPNEGOMechs
+		}
+		inct.NegTokenInit.MechToken = *results.OutputToken
+		/* Encode the SPNEGO reply. */
+		token, err = asn1.Marshal(inct)
+		if err != nil {
+			return
+		}
+		/* Strip off the outermost sequence tag and add an implicit application one. */
+		_, _, _, _, raw := splitTagAndLength(token)
+		tl := makeTagAndLength(0x60, len(raw))
+		buf := bytes.NewBuffer(tl)
+		buf.Write(raw)
+		token = buf.Bytes()
+		results.OutputToken = &token
+	}
+	return
+}
+func proxyInitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, targetName *Name, mechType asn1.ObjectIdentifier, reqFlags Flags, timeReq uint64, inputCB, inputToken *[]byte, options []Option) (results InitSecContextResults, err error) {
 	var args struct {
 		CallCtx           CallCtx
 		Ctx               []rawSecCtx
@@ -1324,8 +1454,54 @@ type AcceptSecContextResults struct {
 	Options             []Option
 }
 
-/* AcceptSecContext accepts a security context initiated a peer.  If the returned Status.MajorStatus is S_CONTINUE_NEEDED, the function should be called again with a token obtained from the peer.  If the OutputToken is not nil, then it should be sent to the peer.  If the returned Status.MajorStatus is S_COMPLETE, then authentication has succeeded.  Any other Status.MajorStatus value is an error. */
+/* AcceptSecContext accepts a security context initiated by a peer.  If the returned Status.MajorStatus is S_CONTINUE_NEEDED, the function should be called again with a token obtained from the peer.  If the OutputToken is not nil, then it should be sent to the peer.  If the returned Status.MajorStatus is S_COMPLETE, then authentication has succeeded.  Any other Status.MajorStatus value is an error. */
 func AcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, inputToken []byte, inputCB *[]byte, retDelegCred bool, options []Option) (results AcceptSecContextResults, err error) {
+	var ict initialNegContextToken
+	var resp negotiateResp
+	var token []byte
+
+	/* Try to parse it as an SPNEGO initiator token. */
+	_, err = asn1.UnmarshalWithParams(inputToken, &ict, "application,tag:0")
+	if err != nil || !ict.ThisMech.Equal(mechSPNEGO) || len(ict.NegTokenInit.MechTypes) == 0 {
+		return proxyAcceptSecContext(conn, callCtx, ctx, cred, inputToken, inputCB, retDelegCred, options)
+	}
+	/* Check if the client's requested one of our preferred mechanisms. */
+	preferredMech := ict.NegTokenInit.MechTypes[0]
+	if preferredMech.Equal(mechKerberos5) || preferredMech.Equal(mechKerberos5Draft) || preferredMech.Equal(mechKerberos5Wrong) {
+		/* Pass the mechanism-specific token on to the proxy. */
+		results, err = proxyAcceptSecContext(conn, callCtx, ctx, cred, ict.NegTokenInit.MechToken, inputCB, retDelegCred, options)
+		if err == nil {
+			/* Interpret the proxy's result. */
+			if results.Status.MajorStatus == S_COMPLETE {
+				resp.NegTokenResp.NegState = negStateAcceptCompleted
+			} else if results.Status.MajorStatus == S_CONTINUE_NEEDED {
+				resp.NegTokenResp.NegState = negStateAcceptIncomplete
+			} else {
+				resp.NegTokenResp.NegState = negStateReject
+			}
+			/* Set things up to encapsulate the mech reply. */
+			resp.NegTokenResp.SupportedMech = ict.NegTokenInit.MechTypes[0]
+			if results.OutputToken != nil {
+				resp.NegTokenResp.ResponseToken = *results.OutputToken
+			}
+		}
+	} else {
+		/* Return an SPNEGO error. */
+		results.Status.MajorStatus = S_BAD_MECH
+		results.Status.MajorStatusString = fmt.Sprintf("bad SPNEGO preferred mechanism [%s]", ict.NegTokenInit.MechTypes[0])
+		resp.NegTokenResp.NegState = negStateReject
+	}
+	/* Encode the SPNEGO reply; we always send data back. */
+	token, err = asn1.Marshal(resp)
+	if err != nil {
+		return
+	}
+	/* Strip off the outermost sequence tag. */
+	_, _, _, _, raw := splitTagAndLength(token)
+	results.OutputToken = &raw
+	return
+}
+func proxyAcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, inputToken []byte, inputCB *[]byte, retDelegCred bool, options []Option) (results AcceptSecContextResults, err error) {
 	var args struct {
 		CallCtx      CallCtx
 		Ctx          []rawSecCtx
@@ -1848,5 +2024,17 @@ func WrapSizeLimit(conn *net.Conn, callCtx CallCtx, ctx SecCtx, confReq bool, qo
 	cooked.MaxInputSize = res.MaxInputSize
 
 	results = cooked
+	return
+}
+
+type SetNegMechsResults struct {
+	Status  Status
+	Options []Option
+}
+
+/* SetNegMechs sets the list of mechanisms which will be offered if we attempt to initialize a security context using the SPNEGO mechanism. */
+func SetNegMechs(conn *net.Conn, callCtx CallCtx, cred *Cred, mechTypes *[]asn1.ObjectIdentifier) (results SetNegMechsResults, err error) {
+	cred.negotiateMechs = mechTypes
+	results.Status.ServerCtx = callCtx.ServerCtx
 	return
 }
