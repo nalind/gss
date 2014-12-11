@@ -305,14 +305,6 @@ func main() {
 		return
 	}
 
-	/* Set up the listener socket. */
-	listener, err := net.Listen("tcp", ":"+strconv.Itoa(*port))
-	if err != nil {
-		fmt.Printf("Error listening for client connection: %s\n", err)
-		return
-	}
-	defer listener.Close()
-
 	/* Acquire acceptor creds, if we were given a name. */
 	if len(service) > 0 {
 		sname := new(proxy.Name)
@@ -334,6 +326,7 @@ func main() {
 			cred = acr.OutputCredHandle
 		}
 	}
+
 	/* Log the creds, such as they are. */
 	if cred != nil && *verbose {
 		name, err := json.Marshal(*cred)
@@ -346,7 +339,16 @@ func main() {
 		}
 	}
 
+	/* Set up the listener socket. */
+	listener, err := net.Listen("tcp", ":"+strconv.Itoa(*port))
+	if err != nil {
+		fmt.Printf("Error listening for client connection: %s\n", err)
+		return
+	}
+	defer listener.Close()
+
 	fmt.Printf("starting...\n")
+
 	if *once {
 		/* Service exactly one client. */
 		conn, err := listener.Accept()
