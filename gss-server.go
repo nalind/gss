@@ -53,23 +53,6 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 		return
 	}
 	if (tag & misc.TOKEN_CONTEXT_NEXT) != 0 {
-		/* Optionally export/reimport the acceptor cred a few times. */
-		if export && cred != nil {
-			for i := 0; i < 3; i++ {
-				major, minor, credToken := gss.ExportCred(cred)
-				major, minor, credToken = gss.ExportCred(cred)
-				major, minor, credToken = gss.ExportCred(cred)
-				if major != gss.S_COMPLETE {
-					DisplayGSSError("exporting a credential", major, minor, nil)
-					return
-				}
-				major, minor, cred = gss.ImportCred(credToken)
-				if major != gss.S_COMPLETE {
-					DisplayGSSError("importing a credential", major, minor, nil)
-					return
-				}
-			}
-		}
 		for {
 			/* Expect a context establishment token. */
 			tag, token := misc.RecvToken(conn)
@@ -353,6 +336,22 @@ func main() {
 	if major != gss.S_COMPLETE {
 		DisplayGSSError("acquiring credentials", major, minor, nil)
 		return
+	}
+
+	/* Optionally export/reimport the acceptor cred a few times. */
+	if *export {
+		for i := 0; i < 3; i++ {
+			major, minor, credToken := gss.ExportCred(cred)
+			if major != gss.S_COMPLETE {
+				DisplayGSSError("exporting a credential", major, minor, nil)
+				return
+			}
+			major, minor, cred = gss.ImportCred(credToken)
+			if major != gss.S_COMPLETE {
+				DisplayGSSError("importing a credential", major, minor, nil)
+				return
+			}
+		}
 	}
 	defer gss.ReleaseCred(cred)
 
