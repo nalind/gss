@@ -325,7 +325,7 @@ func makeTagAndLength(tag, length int) (l []byte) {
 		count++
 		bits = bits >> 8
 	}
-	l[1] = byte((count | 0x80) & 0x7f)
+	l[1] = byte(count | 0x80)
 	return
 }
 
@@ -355,8 +355,9 @@ func splitTagAndLength(tlv []byte) (class int, constructed bool, tag, length int
 			return
 		}
 		for count := 0; count < lbytes; count++ {
-			length = (length << 8) + int(tlv[tbytes+count]&0xff)
+			length = (length << 8) + int(tlv[tbytes+1+count]&0xff)
 		}
+		lbytes++
 	}
 	if len(tlv) != tbytes+lbytes+length {
 		value = nil
