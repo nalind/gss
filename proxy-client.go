@@ -311,7 +311,6 @@ func main() {
 		/* If we're doing SPNEGO, then a passed-in mechanism OID is the one we want to negotiate, but we can't. */
 		fmt.Printf("Warning: set_neg_mechs is not available.\n")
 		tmpmech := misc.ParseOid("1.3.6.1.5.5.2")
-		nmech = &tmpmech
 		mech = tmpmech
 	} else if *krb5 {
 		/* This is the OID from the RFC.  The native tests would use the pre-RFC OID. */
