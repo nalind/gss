@@ -1521,6 +1521,12 @@ func AcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, 
 			if results.OutputToken != nil {
 				resp.NegTokenResp.ResponseToken = *results.OutputToken
 			}
+		} else {
+			/* Don't return an SPNEGO error token, but indicate an error. */
+			results.OutputToken = nil
+			results.Status.MajorStatus = S_FAILURE
+			results.Status.MajorStatusString = "internal error in SPNEGO"
+			return
 		}
 	} else {
 		/* Return an SPNEGO error. */
@@ -1530,7 +1536,10 @@ func AcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, 
 	}
 	/* Encode the SPNEGO reply; we always send data back. */
 	token, err = asn1.Marshal(resp)
+	results.OutputToken = nil
 	if err != nil {
+		results.Status.MajorStatus = S_FAILURE
+		results.Status.MajorStatusString = "internal error in SPNEGO"
 		return
 	}
 	/* Strip off the outermost sequence tag. */
