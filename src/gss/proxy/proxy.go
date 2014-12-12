@@ -1330,17 +1330,32 @@ func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, ta
 			inct.NegTokenInit.MechTypes = defaultSPNEGOMechs
 		}
 		inct.NegTokenInit.MechToken = *results.OutputToken
-		/* Encode the SPNEGO reply. */
-		token, err = asn1.Marshal(inct)
-		if err != nil {
-			return
+		/* Encode the SPNEGO intiator. */
+		if inputToken != nil {
+			/* Second-or-later pass, don't include the mech OID framing. */
+			token, err = asn1.Marshal(inct.NegTokenInit)
+			if err != nil {
+				return
+			}
+			/* Strip off the outermost sequence tag and add a context-specific one. */
+			_, _, _, _, raw := splitTagAndLength(token)
+			tl := makeTagAndLength(0xa0, len(raw))
+			buf := bytes.NewBuffer(tl)
+			buf.Write(raw)
+			token = buf.Bytes()
+		} else {
+			/* First-pass, include the mech OID. */
+			token, err = asn1.Marshal(inct)
+			if err != nil {
+				return
+			}
+			/* Strip off the outermost sequence tag and add an implicit application one. */
+			_, _, _, _, raw := splitTagAndLength(token)
+			tl := makeTagAndLength(0x60, len(raw))
+			buf := bytes.NewBuffer(tl)
+			buf.Write(raw)
+			token = buf.Bytes()
 		}
-		/* Strip off the outermost sequence tag and add an implicit application one. */
-		_, _, _, _, raw := splitTagAndLength(token)
-		tl := makeTagAndLength(0x60, len(raw))
-		buf := bytes.NewBuffer(tl)
-		buf.Write(raw)
-		token = buf.Bytes()
 		results.OutputToken = &token
 	}
 	return
@@ -1475,24 +1490,34 @@ func AcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, 
 	/* Try to parse it as an SPNEGO initiator token. */
 	_, err = asn1.UnmarshalWithParams(inputToken, &ict, "application,tag:0")
 	if err != nil || !ict.ThisMech.Equal(MechSPNEGO) || len(ict.NegTokenInit.MechTypes) == 0 {
-		return proxyAcceptSecContext(conn, callCtx, ctx, cred, inputToken, inputCB, retDelegCred, options)
+		_, err = asn1.UnmarshalWithParams(inputToken, &ict.NegTokenInit, "tag:0")
+		if err != nil {
+			return proxyAcceptSecContext(conn, callCtx, ctx, cred, inputToken, inputCB, retDelegCred, options)
+		}
 	}
 	/* Check if the client's requested one of our preferred mechanisms. */
 	preferredMech := ict.NegTokenInit.MechTypes[0]
-	if mechIsKerberos(preferredMech) {
+	if len(preferredMech) == 0 || mechIsKerberos(preferredMech) {
 		/* Pass the mechanism-specific token on to the proxy. */
 		results, err = proxyAcceptSecContext(conn, callCtx, ctx, cred, ict.NegTokenInit.MechToken, inputCB, retDelegCred, options)
 		if err == nil {
 			/* Interpret the proxy's result. */
 			if results.Status.MajorStatus == S_COMPLETE {
 				resp.NegTokenResp.NegState = negStateAcceptCompleted
+				if len(preferredMech) == 0 {
+					preferredMech = results.SecCtx.Mech
+				}
 			} else if results.Status.MajorStatus == S_CONTINUE_NEEDED {
 				resp.NegTokenResp.NegState = negStateAcceptIncomplete
 			} else {
 				resp.NegTokenResp.NegState = negStateReject
 			}
 			/* Set things up to encapsulate the mech reply. */
-			resp.NegTokenResp.SupportedMech = ict.NegTokenInit.MechTypes[0]
+			if len(preferredMech) != 0 {
+				resp.NegTokenResp.SupportedMech = preferredMech
+			} else {
+				resp.NegTokenResp.SupportedMech = MechKerberos5
+			}
 			if results.OutputToken != nil {
 				resp.NegTokenResp.ResponseToken = *results.OutputToken
 			}
