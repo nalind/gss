@@ -1229,6 +1229,14 @@ func StoreCred(conn *net.Conn, callCtx CallCtx, cred Cred, credUsage int, desire
 	return
 }
 
+/* mechIsKerberos returns a boolean if the passed-in mech is any of three OIDs which we take to mean "Kerberos 5". */
+func mechIsKerberos(mech asn1.ObjectIdentifier) bool {
+	if mech.Equal(MechKerberos5) || mech.Equal(MechKerberos5Draft) || mech.Equal(MechKerberos5Wrong) {
+		return true
+	}
+	return false
+}
+
 type InitSecContextResults struct {
 	Status      Status
 	SecCtx      *SecCtx
@@ -1266,7 +1274,7 @@ func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, ta
 				results.Status.MajorStatusString = fmt.Sprintf("bad SPNEGO preferred mechanism [%s]", resp.SupportedMech)
 				return
 			} else {
-				if !resp.SupportedMech.Equal(MechKerberos5) && !resp.SupportedMech.Equal(MechKerberos5Draft) && !resp.SupportedMech.Equal(MechKerberos5Wrong) {
+				if !mechIsKerberos(resp.SupportedMech) {
 					/* Not a Kerberos mech. */
 					results.Status.MajorStatus = S_BAD_MECH
 					results.Status.MajorStatusString = fmt.Sprintf("bad SPNEGO preferred mechanism [%s]", resp.SupportedMech)
@@ -1467,7 +1475,7 @@ func AcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, 
 	}
 	/* Check if the client's requested one of our preferred mechanisms. */
 	preferredMech := ict.NegTokenInit.MechTypes[0]
-	if preferredMech.Equal(MechKerberos5) || preferredMech.Equal(MechKerberos5Draft) || preferredMech.Equal(MechKerberos5Wrong) {
+	if mechIsKerberos(preferredMech) {
 		/* Pass the mechanism-specific token on to the proxy. */
 		results, err = proxyAcceptSecContext(conn, callCtx, ctx, cred, ict.NegTokenInit.MechToken, inputCB, retDelegCred, options)
 		if err == nil {
