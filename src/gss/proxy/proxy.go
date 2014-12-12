@@ -1303,6 +1303,10 @@ func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, ta
 	if results.Status.MajorStatus != S_COMPLETE && results.Status.MajorStatus != S_CONTINUE_NEEDED {
 		return
 	}
+	/* Don't advertise that we can do MICs yet if we don't know that the peer wants us to sign the negotiation. */
+	if results.Status.MajorStatus == S_CONTINUE_NEEDED {
+		results.SecCtx.Flags.ProtReady = false
+	}
 	if inputToken != nil {
 		if resp.NegState == negStateAcceptCompleted && results.OutputToken != nil {
 			/* Peer is not expecting more data, but we have some to send. */
