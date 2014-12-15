@@ -835,7 +835,7 @@ type GetCallContextResults struct {
 	Options   []Option
 }
 
-/* GetCallContext returns a ServerCtx value which should be used in subsequent calls to this proxy server.  As of this writing, the proxy implementation is a no-op. */
+/* GetCallContext returns a ServerCtx value which should be used in subsequent calls to this proxy server.  As of gss-proxy 0.3.1, the proxy implementation is a no-op. */
 func GetCallContext(conn *net.Conn, callCtx CallCtx, options []Option) (results GetCallContextResults, err error) {
 	var args struct {
 		CallCtx CallCtx
@@ -949,7 +949,7 @@ type ExportCredResults struct {
 	Options        []Option
 }
 
-/* ExportCred converts a credential structure into a byte slice.  As of this writing, the proxy implementation is a no-op. */
+/* ExportCred converts a credential structure into a byte slice.  As of gss-proxy 0.3.1, the proxy implementation is a no-op. */
 func ExportCred(conn *net.Conn, callCtx CallCtx, cred Cred, credUsage int, options []Option) (results ExportCredResults, err error) {
 	var args struct {
 		CallCtx   CallCtx
@@ -1007,7 +1007,7 @@ type ImportCredResults struct {
 	Options          []Option
 }
 
-/* ImportCred reconstructs a credential structure from a byte slice.  As of this writing, the proxy implementation is a no-op. */
+/* ImportCred reconstructs a credential structure from a byte slice.  As of gss-proxy 0.3.1, the proxy implementation is a no-op. */
 func ImportCred(conn *net.Conn, callCtx CallCtx, exportedCred []byte, options []Option) (results ImportCredResults, err error) {
 	var args struct {
 		CallCtx      CallCtx
@@ -1163,7 +1163,7 @@ type StoreCredResults struct {
 	Options         []Option
 }
 
-/* StoreCred stores credentials for a specific mechanism and which are intended for a specific use in the default credential store, optionally overwriting other credentials which may already be present, and also optionally making them the default credentials.  As of this writing, the proxy implementation is a no-op. */
+/* StoreCred stores credentials for a specific mechanism and which are intended for a specific use in the default credential store, optionally overwriting other credentials which may already be present, and also optionally making them the default credentials.  As of gss-proxy 0.3.1, the proxy implementation is a no-op. */
 func StoreCred(conn *net.Conn, callCtx CallCtx, cred Cred, credUsage int, desiredMech asn1.ObjectIdentifier, overwriteCred, defaultCred bool, options []Option) (results StoreCredResults, err error) {
 	var args struct {
 		CallCtx            CallCtx
