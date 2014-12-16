@@ -1251,6 +1251,9 @@ func InitSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, t
 	var token []byte
 
 	if len(mechType) == 0 || !mechType.Equal(MechSPNEGO) {
+		if len(mechType) == 0 {
+			mechType = mechKerberos5
+		}
 		return proxyInitSecContext(conn, callCtx, ctx, cred, targetName, mechType, reqFlags, timeReq, inputCB, inputToken, options)
 	}
 
