@@ -1350,7 +1350,6 @@ func InitSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, t
 				results.Status.MajorStatusString = "internal error in SPNEGO"
 				return
 			}
-			fmt.Printf("VerifyMic\n")
 			vmr, err = VerifyMic(conn, callCtx, ctx, token, resp.MechListMic)
 			if err != nil {
 				results.OutputToken = nil
@@ -1385,7 +1384,6 @@ func InitSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, t
 			return
 		}
 		gmr, err = GetMic(conn, callCtx, ctx, C_QOP_DEFAULT, token)
-		fmt.Printf("GetMic\n")
 		if err != nil {
 			results.OutputToken = nil
 			results.Status.MajorStatus = S_FAILURE
@@ -1443,12 +1441,10 @@ func InitSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, t
 		results.OutputToken = &token
 		/* We always expect more from the acceptor. */
 		if callCtx.spnegoInit.baseComplete && len(inct.NegTokenInit.MechToken) == 0 && !callCtx.spnegoInit.needMic {
-			fmt.Printf("Complete 1\n")
 			results.Status.MajorStatus = S_COMPLETE
 			/* Restore the context flag. */
 			results.SecCtx.Flags.ProtReady = callCtx.spnegoInit.protReady
 		} else {
-			fmt.Printf("Continue 1\n")
 			results.Status.MajorStatus = S_CONTINUE_NEEDED
 			/* Don't advertise that we can do MICs yet if we still have messages to receive. */
 			results.SecCtx.Flags.ProtReady = false
@@ -1456,7 +1452,6 @@ func InitSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, t
 	} else {
 		/* No data to send means we're not expecting a reply. */
 		if callCtx.spnegoInit.baseComplete {
-			fmt.Printf("Complete 2\n")
 			results.OutputToken = nil
 			results.Status.MajorStatus = S_COMPLETE
 			/* Restore the context flag. */
