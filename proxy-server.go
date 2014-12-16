@@ -30,7 +30,7 @@ func dump(file io.Writer, data []byte) {
 }
 
 func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, export, verbose bool, logfile io.Writer) {
-	var pctx *proxy.SecCtx
+	var ctx proxy.SecCtx
 
 	defer conn.Close()
 
@@ -60,7 +60,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 				fmt.Printf("Expected context establishment token, got %d token instead.\n", tag)
 				return
 			}
-			ascr, err := proxy.AcceptSecContext(pconn, pcc, pctx, cred, token, nil, false, nil)
+			ascr, err := proxy.AcceptSecContext(pconn, &pcc, &ctx, cred, token, nil, false, nil)
 			if err != nil {
 				fmt.Printf("Error accepting context: %s.\n", err)
 				return
@@ -68,9 +68,6 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 			if ascr.Status.MajorStatus != proxy.S_COMPLETE && ascr.Status.MajorStatus != proxy.S_CONTINUE_NEEDED {
 				DisplayProxyStatus("accepting a context", ascr.Status)
 				return
-			}
-			if ascr.SecCtx != nil {
-				pctx = ascr.SecCtx
 			}
 			if ascr.OutputToken != nil {
 				/* If we got a new token, send it to the client. */
@@ -82,7 +79,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 			}
 			/* We never use delegated creds, so if we got some, just make sure they get cleaned up. */
 			if ascr.DelegatedCredHandle != nil && ascr.DelegatedCredHandle.NeedsRelease {
-				rcr, err := proxy.ReleaseCred(pconn, pcc, *ascr.DelegatedCredHandle)
+				rcr, err := proxy.ReleaseCred(pconn, &pcc, ascr.DelegatedCredHandle)
 				if err != nil {
 					fmt.Printf("Error releasing delegated creds: %s.\n", err)
 					return
@@ -98,7 +95,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 					fmt.Fprintf(logfile, "\n")
 				}
 				/* Make sure the context is cleaned up eventually. */
-				defer proxy.ReleaseSecCtx(pconn, pcc, *pctx)
+				defer proxy.ReleaseSecCtx(pconn, &pcc, &ctx)
 				break
 			}
 			/* Wait for another context establishment token. */
@@ -108,11 +105,11 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 		}
 		/* Dig up information about the connection. */
 		if verbose && logfile != nil {
-			fmt.Fprintf(logfile, "Accepted connection using mechanism OID %s.\n", pctx.Mech)
+			fmt.Fprintf(logfile, "Accepted connection using mechanism OID %s.\n", ctx.Mech)
 		}
 		/* Figure out the client's attributes and displayable and local names. */
 		if verbose && logfile != nil {
-			for _, attr := range pctx.SrcName.NameAttributes {
+			for _, attr := range ctx.SrcName.NameAttributes {
 				fmt.Fprintf(logfile, "Attribute %s \"%s\"", attr.Attr, attr.Value)
 				fmt.Fprintf(logfile, "\n")
 				dump(logfile, attr.Value)
@@ -124,14 +121,14 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 		}
 	}
 	/* Start processing message tokens from the client. */
-	if pctx != nil {
-		if len(pctx.SrcName.DisplayName) > 0 {
-			fmt.Printf("Accepted connection: \"%s\"\n", pctx.SrcName.DisplayName)
+	if ctx.Open {
+		if len(ctx.SrcName.DisplayName) > 0 {
+			fmt.Printf("Accepted connection: \"%s\"\n", ctx.SrcName.DisplayName)
 		} else {
 			fmt.Printf("Accepted connection.\n")
 		}
 		if verbose {
-			name, err := json.Marshal(pctx.SrcName)
+			name, err := json.Marshal(ctx.SrcName)
 			if err == nil {
 				var buf bytes.Buffer
 				fmt.Fprintf(logfile, "= Client Name = ")
@@ -169,7 +166,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 			dump(logfile, token)
 		}
 		/* No context handle means no encryption or signing. */
-		if pctx == nil && (tag&(misc.TOKEN_WRAPPED|misc.TOKEN_ENCRYPTED|misc.TOKEN_SEND_MIC)) != 0 {
+		if !ctx.Open && (tag&(misc.TOKEN_WRAPPED|misc.TOKEN_ENCRYPTED|misc.TOKEN_SEND_MIC)) != 0 {
 			if logfile != nil {
 				fmt.Fprintf(logfile, "Unauthenticated client requested authenticated services!\n")
 			}
@@ -179,7 +176,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 		if tag&misc.TOKEN_WRAPPED != 0 {
 			tokens := make([][]byte, 1)
 			tokens[0] = token
-			ur, err := proxy.Unwrap(pconn, pcc, *pctx, tokens, proxy.C_QOP_DEFAULT)
+			ur, err := proxy.Unwrap(pconn, &pcc, &ctx, tokens, proxy.C_QOP_DEFAULT)
 			if err != nil {
 				fmt.Printf("Error unwrapping token: %s.\n", err)
 				return
@@ -187,9 +184,6 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 			if ur.Status.MajorStatus != proxy.S_COMPLETE {
 				DisplayProxyStatus("unwrapping token", ur.Status)
 				return
-			}
-			if ur.SecCtx != nil {
-				pctx = ur.SecCtx
 			}
 			/* If we were told it was encrypted, and it wasn't, warn. */
 			if !ur.ConfState && misc.TOKEN_ENCRYPTED != 0 {
@@ -211,7 +205,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 		/* Reply. */
 		if tag&misc.TOKEN_SEND_MIC != 0 {
 			/* Send back a signature over the payload data. */
-			gmr, err := proxy.GetMic(pconn, pcc, *pctx, proxy.C_QOP_DEFAULT, token)
+			gmr, err := proxy.GetMic(pconn, &pcc, &ctx, proxy.C_QOP_DEFAULT, token)
 			if err != nil {
 				fmt.Printf("Error signing token: %s.\n", err)
 				return
@@ -220,10 +214,11 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 				DisplayProxyStatus("unwrapping token", gmr.Status)
 				return
 			}
-			if gmr.SecCtx != nil {
-				pctx = gmr.SecCtx
-			}
 			misc.SendToken(conn, misc.TOKEN_MIC, gmr.TokenBuffer)
+			if verbose && logfile != nil {
+				fmt.Fprintf(logfile, "Sending MIC token (flags=%d):\n", tag)
+				dump(logfile, gmr.TokenBuffer)
+			}
 		} else {
 			/* Send back a minimal acknowledgement. */
 			misc.SendToken(conn, misc.TOKEN_NOOP, nil)
@@ -271,7 +266,7 @@ func main() {
 	}
 
 	/* Get a calling context. */
-	gccr, err := proxy.GetCallContext(&pconn, call, nil)
+	gccr, err := proxy.GetCallContext(&pconn, &call, nil)
 	if err != nil {
 		fmt.Printf("Error getting a calling context: %s", err)
 		return
@@ -287,7 +282,7 @@ func main() {
 		sname.DisplayName = service
 		sname.NameType = proxy.NT_HOSTBASED_SERVICE
 
-		acr, err := proxy.AcquireCred(&pconn, call, nil, false, sname, proxy.C_INDEFINITE, nil, proxy.C_ACCEPT, proxy.C_INDEFINITE, proxy.C_INDEFINITE, nil)
+		acr, err := proxy.AcquireCred(&pconn, &call, nil, false, sname, proxy.C_INDEFINITE, nil, proxy.C_ACCEPT, proxy.C_INDEFINITE, proxy.C_INDEFINITE, nil)
 		if err != nil {
 			fmt.Printf("Error acquiring credentials: %s\n", err)
 			return
@@ -318,7 +313,7 @@ func main() {
 		/* Optionally export/reimport the acceptor cred a few times. */
 		if *export {
 			for i := 0; i < 3; i++ {
-				ecr, err := proxy.ExportCred(&pconn, call, *cred, 0, nil)
+				ecr, err := proxy.ExportCred(&pconn, &call, *cred, 0, nil)
 				if err != nil {
 					fmt.Fprintf(log, "Error exporting credential: %s\n", err)
 					return
@@ -331,7 +326,7 @@ func main() {
 					fmt.Fprintf(log, "ExportCred() succeeded but produced nothing.\n")
 					return
 				}
-				icr, err := proxy.ImportCred(&pconn, call, ecr.ExportedHandle, nil)
+				icr, err := proxy.ImportCred(&pconn, &call, ecr.ExportedHandle, nil)
 				if err != nil {
 					fmt.Fprintf(log, "Error importing credential: %s\n", err)
 					return
@@ -375,7 +370,7 @@ func main() {
 		}
 	}
 	if cred != nil && cred.NeedsRelease {
-		proxy.ReleaseCred(&pconn, call, *cred)
+		proxy.ReleaseCred(&pconn, &call, cred)
 	}
 	return
 }

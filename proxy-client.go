@@ -10,9 +10,8 @@ import "net"
 import "os"
 import "strings"
 
-func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, service string, mcount int, quiet bool, plain []byte, v1 bool, nmech *asn1.ObjectIdentifier, mech asn1.ObjectIdentifier, delegate, seq, noreplay, nomutual, noauth, nowrap, noenc, nomic bool) {
+func connectOnce(pconn *net.Conn, pcc *proxy.CallCtx, host string, port int, service string, mcount int, quiet bool, plain []byte, v1 bool, nmech *asn1.ObjectIdentifier, mech asn1.ObjectIdentifier, delegate, seq, noreplay, nomutual, noauth, nowrap, noenc, nomic bool) {
 	var ctx proxy.SecCtx
-	var pctx *proxy.SecCtx
 	var status proxy.Status
 	var tag byte
 	var ptoken *[]byte
@@ -58,7 +57,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 		flags = proxy.Flags{Deleg: delegate, Sequence: seq, Replay: !noreplay, Conf: !noenc, Integ: !nomic, Mutual: !nomutual}
 		for true {
 			/* Start/continue. */
-			iscr, err := proxy.InitSecContext(pconn, pcc, pctx, nil, &sname, mech, flags, proxy.C_INDEFINITE, nil, ptoken, nil)
+			iscr, err := proxy.InitSecContext(pconn, pcc, &ctx, nil, &sname, mech, flags, proxy.C_INDEFINITE, nil, ptoken, nil)
 			if err != nil {
 				fmt.Printf("Error initializing security context: %s\n", err)
 				return
@@ -68,10 +67,6 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 			if major != proxy.S_COMPLETE && major != proxy.S_CONTINUE_NEEDED {
 				DisplayProxyStatus("initializing security context", iscr.Status)
 				return
-			}
-			if iscr.SecCtx != nil {
-				ctx = *iscr.SecCtx
-				pctx = &ctx
 			}
 			/* If we have an output token, we need to send it. */
 			if iscr.OutputToken != nil {
@@ -172,7 +167,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 		} else {
 			plains := make([][]byte, 1)
 			plains[0] = plain
-			wr, err := proxy.Wrap(pconn, pcc, ctx, !noenc, plains, proxy.C_QOP_DEFAULT)
+			wr, err := proxy.Wrap(pconn, pcc, &ctx, !noenc, plains, proxy.C_QOP_DEFAULT)
 			if err != nil {
 				fmt.Printf("Error wrapping message: %s\n", err)
 				return
@@ -185,10 +180,6 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 			}
 			if !noenc && !wr.ConfState && !quiet {
 				fmt.Printf("Warning!  Message not encrypted.\n")
-			}
-			if wr.SecCtx != nil {
-				ctx = *wr.SecCtx
-				pctx = &ctx
 			}
 			wrapped = wr.TokenBuffer[0]
 		}
@@ -226,7 +217,7 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 				fmt.Printf("Response received.\n")
 			}
 		} else {
-			vr, err := proxy.VerifyMic(pconn, pcc, ctx, plain, mictoken)
+			vr, err := proxy.VerifyMic(pconn, pcc, &ctx, plain, mictoken)
 			if err != nil {
 				fmt.Printf("Error verifying mic: %s\n", err)
 				return
@@ -236,10 +227,6 @@ func connectOnce(pconn *net.Conn, pcc proxy.CallCtx, host string, port int, serv
 			if major != proxy.S_COMPLETE {
 				DisplayProxyStatus("verifying signature", status)
 				return
-			}
-			if vr.SecCtx != nil {
-				ctx = *vr.SecCtx
-				pctx = &ctx
 			}
 			if !quiet {
 				fmt.Printf("Signature verified.\n")
@@ -338,7 +325,7 @@ func main() {
 		return
 	}
 
-	gccr, err := proxy.GetCallContext(&pconn, call, nil)
+	gccr, err := proxy.GetCallContext(&pconn, &call, nil)
 	if err != nil {
 		fmt.Printf("Error getting a calling context: %s", err)
 		return
@@ -349,6 +336,6 @@ func main() {
 	}
 
 	for c := 0; c < *ccount; c++ {
-		connectOnce(&pconn, call, host, *port, service, *mcount, *quiet, plain, *v1, nmech, mech, *delegate, *seq, *noreplay, *nomutual, *noauth, *nowrap, *noenc, *nomic)
+		connectOnce(&pconn, &call, host, *port, service, *mcount, *quiet, plain, *v1, nmech, mech, *delegate, *seq, *noreplay, *nomutual, *noauth, *nowrap, *noenc, *nomic)
 	}
 }

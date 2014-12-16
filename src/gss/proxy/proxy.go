@@ -773,7 +773,7 @@ type IndicateMechsResults struct {
 }
 
 /* IndicateMechs returns a list of the mechanisms supported by this proxy. */
-func IndicateMechs(conn *net.Conn, callCtx CallCtx) (results IndicateMechsResults, err error) {
+func IndicateMechs(conn *net.Conn, callCtx *CallCtx) (results IndicateMechsResults, err error) {
 	var args struct {
 		CallCtx CallCtx
 	}
@@ -787,7 +787,7 @@ func IndicateMechs(conn *net.Conn, callCtx CallCtx) (results IndicateMechsResult
 	var cooked IndicateMechsResults
 	var cbuf, rbuf bytes.Buffer
 
-	args.CallCtx = callCtx
+	args.CallCtx = *callCtx
 	_, err = xdr.Marshal(&cbuf, &args)
 	if err != nil {
 		return
@@ -836,7 +836,7 @@ type GetCallContextResults struct {
 }
 
 /* GetCallContext returns a ServerCtx value which should be used in subsequent calls to this proxy server.  As of gss-proxy 0.3.1, the proxy implementation is a no-op. */
-func GetCallContext(conn *net.Conn, callCtx CallCtx, options []Option) (results GetCallContextResults, err error) {
+func GetCallContext(conn *net.Conn, callCtx *CallCtx, options []Option) (results GetCallContextResults, err error) {
 	var args struct {
 		CallCtx CallCtx
 		Options []Option
@@ -844,7 +844,7 @@ func GetCallContext(conn *net.Conn, callCtx CallCtx, options []Option) (results 
 	var res GetCallContextResults
 	var cbuf, rbuf bytes.Buffer
 
-	args.CallCtx = callCtx
+	args.CallCtx = *callCtx
 	args.Options = options
 	_, err = xdr.Marshal(&cbuf, &args)
 	if err != nil {
@@ -873,7 +873,7 @@ type ImportAndCanonNameResults struct {
 }
 
 /* ImportAndCanonName imports and canonicalizes a name.  An uncanonicalized name can be used after its DisplayName and NameType are initialized, so this function is not always used. */
-func ImportAndCanonName(conn *net.Conn, callCtx CallCtx, name Name, mech asn1.ObjectIdentifier, nameAttrs []NameAttr, options []Option) (results ImportAndCanonNameResults, err error) {
+func ImportAndCanonName(conn *net.Conn, callCtx *CallCtx, name Name, mech asn1.ObjectIdentifier, nameAttrs []NameAttr, options []Option) (results ImportAndCanonNameResults, err error) {
 	var args struct {
 		CallCtx   CallCtx
 		InputName rawName
@@ -891,7 +891,7 @@ func ImportAndCanonName(conn *net.Conn, callCtx CallCtx, name Name, mech asn1.Ob
 	var natmp rawNameAttr
 	var cbuf, rbuf bytes.Buffer
 
-	args.CallCtx = callCtx
+	args.CallCtx = *callCtx
 	args.InputName, err = uncookName(name)
 	if err != nil {
 		return
@@ -950,7 +950,7 @@ type ExportCredResults struct {
 }
 
 /* ExportCred converts a credential structure into a byte slice.  As of gss-proxy 0.3.1, the proxy implementation is a no-op. */
-func ExportCred(conn *net.Conn, callCtx CallCtx, cred Cred, credUsage int, options []Option) (results ExportCredResults, err error) {
+func ExportCred(conn *net.Conn, callCtx *CallCtx, cred Cred, credUsage int, options []Option) (results ExportCredResults, err error) {
 	var args struct {
 		CallCtx   CallCtx
 		Cred      rawCred
@@ -966,7 +966,7 @@ func ExportCred(conn *net.Conn, callCtx CallCtx, cred Cred, credUsage int, optio
 	var cooked ExportCredResults
 	var cbuf, rbuf bytes.Buffer
 
-	args.CallCtx = callCtx
+	args.CallCtx = *callCtx
 	args.Cred, err = uncookCred(cred)
 	if err != nil {
 		return
@@ -1008,7 +1008,7 @@ type ImportCredResults struct {
 }
 
 /* ImportCred reconstructs a credential structure from a byte slice.  As of gss-proxy 0.3.1, the proxy implementation is a no-op. */
-func ImportCred(conn *net.Conn, callCtx CallCtx, exportedCred []byte, options []Option) (results ImportCredResults, err error) {
+func ImportCred(conn *net.Conn, callCtx *CallCtx, exportedCred []byte, options []Option) (results ImportCredResults, err error) {
 	var args struct {
 		CallCtx      CallCtx
 		ExportedCred []byte
@@ -1023,7 +1023,7 @@ func ImportCred(conn *net.Conn, callCtx CallCtx, exportedCred []byte, options []
 	var cbuf, rbuf bytes.Buffer
 	var ctmp Cred
 
-	args.CallCtx = callCtx
+	args.CallCtx = *callCtx
 	args.ExportedCred = exportedCred
 	args.Options = options
 	_, err = xdr.Marshal(&cbuf, &args)
@@ -1066,7 +1066,7 @@ type AcquireCredResults struct {
 }
 
 /* AcquireCred adds non-default credentials, or credentials using non-default settings, to a credential structure, possibly creating one. */
-func AcquireCred(conn *net.Conn, callCtx CallCtx, inputCredHandle *Cred, addCredToInputHandle bool, desiredName *Name, timeReq uint64, desiredMechs []asn1.ObjectIdentifier, credUsage int, initiatorTimeReq, acceptorTimeReq uint64, options []Option) (results AcquireCredResults, err error) {
+func AcquireCred(conn *net.Conn, callCtx *CallCtx, inputCredHandle *Cred, addCredToInputHandle bool, desiredName *Name, timeReq uint64, desiredMechs []asn1.ObjectIdentifier, credUsage int, initiatorTimeReq, acceptorTimeReq uint64, options []Option) (results AcquireCredResults, err error) {
 	var args struct {
 		CallCtx                           CallCtx
 		InputCredHandle                   []rawCred
@@ -1089,7 +1089,7 @@ func AcquireCred(conn *net.Conn, callCtx CallCtx, inputCredHandle *Cred, addCred
 	var ntmp rawName
 	var cbuf, rbuf bytes.Buffer
 
-	args.CallCtx = callCtx
+	args.CallCtx = *callCtx
 	if inputCredHandle != nil {
 		args.InputCredHandle = make([]rawCred, 1)
 		ctmp, err = uncookCred(*inputCredHandle)
@@ -1164,7 +1164,7 @@ type StoreCredResults struct {
 }
 
 /* StoreCred stores credentials for a specific mechanism and which are intended for a specific use in the default credential store, optionally overwriting other credentials which may already be present, and also optionally making them the default credentials.  As of gss-proxy 0.3.1, the proxy implementation is a no-op. */
-func StoreCred(conn *net.Conn, callCtx CallCtx, cred Cred, credUsage int, desiredMech asn1.ObjectIdentifier, overwriteCred, defaultCred bool, options []Option) (results StoreCredResults, err error) {
+func StoreCred(conn *net.Conn, callCtx *CallCtx, cred Cred, credUsage int, desiredMech asn1.ObjectIdentifier, overwriteCred, defaultCred bool, options []Option) (results StoreCredResults, err error) {
 	var args struct {
 		CallCtx            CallCtx
 		Cred               rawCred
@@ -1182,7 +1182,7 @@ func StoreCred(conn *net.Conn, callCtx CallCtx, cred Cred, credUsage int, desire
 	var cooked StoreCredResults
 	var cbuf, rbuf bytes.Buffer
 
-	args.CallCtx = callCtx
+	args.CallCtx = *callCtx
 	args.Cred, err = uncookCred(cred)
 	if err != nil {
 		return
@@ -1245,7 +1245,7 @@ type InitSecContextResults struct {
 }
 
 /* InitSecContext initiates a security context with a peer.  If the returned Status.MajorStatus is S_CONTINUE_NEEDED, the function should be called again with a token obtained from the peer.  If the OutputToken is not nil, then it should be sent to the peer.  If the returned Status.MajorStatus is S_COMPLETE, then authentication has succeeded.  Any other Status.MajorStatus value is an error. */
-func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, targetName *Name, mechType asn1.ObjectIdentifier, reqFlags Flags, timeReq uint64, inputCB, inputToken *[]byte, options []Option) (results InitSecContextResults, err error) {
+func InitSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, targetName *Name, mechType asn1.ObjectIdentifier, reqFlags Flags, timeReq uint64, inputCB, inputToken *[]byte, options []Option) (results InitSecContextResults, err error) {
 	var inct initialNegContextToken
 	var resp negTokenResp
 	var token []byte
@@ -1360,7 +1360,7 @@ func InitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, ta
 	}
 	return
 }
-func proxyInitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, targetName *Name, mechType asn1.ObjectIdentifier, reqFlags Flags, timeReq uint64, inputCB, inputToken *[]byte, options []Option) (results InitSecContextResults, err error) {
+func proxyInitSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, targetName *Name, mechType asn1.ObjectIdentifier, reqFlags Flags, timeReq uint64, inputCB, inputToken *[]byte, options []Option) (results InitSecContextResults, err error) {
 	var args struct {
 		CallCtx           CallCtx
 		Ctx               []rawSecCtx
@@ -1385,8 +1385,8 @@ func proxyInitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cre
 	var cooked InitSecContextResults
 	var cbuf, rbuf bytes.Buffer
 
-	args.CallCtx = callCtx
-	if ctx != nil {
+	args.CallCtx = *callCtx
+	if ctx != nil && len(ctx.ExportedContextToken) > 0 {
 		args.Ctx = make([]rawSecCtx, 1)
 		stmp, err = uncookSecCtx(*ctx)
 		if err != nil {
@@ -1463,6 +1463,9 @@ func proxyInitSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cre
 			return
 		}
 		cooked.SecCtx = &sctmp
+		if ctx != nil {
+			*ctx = sctmp
+		}
 	}
 	if len(res.OutputToken) > 0 {
 		cooked.OutputToken = &res.OutputToken[0]
@@ -1482,8 +1485,8 @@ type AcceptSecContextResults struct {
 }
 
 /* AcceptSecContext accepts a security context initiated by a peer.  If the returned Status.MajorStatus is S_CONTINUE_NEEDED, the function should be called again with a token obtained from the peer.  If the OutputToken is not nil, then it should be sent to the peer.  If the returned Status.MajorStatus is S_COMPLETE, then authentication has succeeded.  Any other Status.MajorStatus value is an error. */
-func AcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, inputToken []byte, inputCB *[]byte, retDelegCred bool, options []Option) (results AcceptSecContextResults, err error) {
-	var ict initialNegContextToken
+func AcceptSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, inputToken []byte, inputCB *[]byte, retDelegCred bool, options []Option) (results AcceptSecContextResults, err error) {
+	var inct initialNegContextToken
 	var resp negotiateResp
 	var token []byte
 
@@ -1547,7 +1550,7 @@ func AcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, 
 	results.OutputToken = &raw
 	return
 }
-func proxyAcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *Cred, inputToken []byte, inputCB *[]byte, retDelegCred bool, options []Option) (results AcceptSecContextResults, err error) {
+func proxyAcceptSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, inputToken []byte, inputCB *[]byte, retDelegCred bool, options []Option) (results AcceptSecContextResults, err error) {
 	var args struct {
 		CallCtx      CallCtx
 		Ctx          []rawSecCtx
@@ -1571,8 +1574,8 @@ func proxyAcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *C
 	var cooked AcceptSecContextResults
 	var cbuf, rbuf bytes.Buffer
 
-	args.CallCtx = callCtx
-	if ctx != nil {
+	args.CallCtx = *callCtx
+	if ctx != nil && len(ctx.ExportedContextToken) > 0 {
 		args.Ctx = make([]rawSecCtx, 1)
 		stmp, err = uncookSecCtx(*ctx)
 		if err != nil {
@@ -1627,6 +1630,9 @@ func proxyAcceptSecContext(conn *net.Conn, callCtx CallCtx, ctx *SecCtx, cred *C
 			return
 		}
 		cooked.SecCtx = &sctmp
+		if ctx != nil {
+			*ctx = sctmp
+		}
 	}
 	if len(res.OutputToken) > 0 {
 		cooked.OutputToken = &res.OutputToken[0]
@@ -1649,7 +1655,7 @@ type ReleaseCredResults struct {
 }
 
 /* ReleaseCred releases credentials which will no longer be needed. */
-func ReleaseCred(conn *net.Conn, callCtx CallCtx, cred Cred) (results ReleaseCredResults, err error) {
+func ReleaseCred(conn *net.Conn, callCtx *CallCtx, cred *Cred) (results ReleaseCredResults, err error) {
 	var args struct {
 		CallCtx CallCtx
 		What    int
@@ -1661,9 +1667,9 @@ func ReleaseCred(conn *net.Conn, callCtx CallCtx, cred Cred) (results ReleaseCre
 	var cooked ReleaseCredResults
 	var cbuf, rbuf bytes.Buffer
 
-	args.CallCtx = callCtx
+	args.CallCtx = *callCtx
 	args.What = intGSSX_C_HANDLE_CRED
-	args.Cred, err = uncookCred(cred)
+	args.Cred, err = uncookCred(*cred)
 	if err != nil {
 		return
 	}
@@ -1696,7 +1702,7 @@ type ReleaseSecCtxResults struct {
 }
 
 /* ReleaseSecCtx releases a security context which will no longer be needed. */
-func ReleaseSecCtx(conn *net.Conn, callCtx CallCtx, ctx SecCtx) (results ReleaseSecCtxResults, err error) {
+func ReleaseSecCtx(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx) (results ReleaseSecCtxResults, err error) {
 	var args struct {
 		CallCtx CallCtx
 		What    int
@@ -1708,9 +1714,9 @@ func ReleaseSecCtx(conn *net.Conn, callCtx CallCtx, ctx SecCtx) (results Release
 	var cooked ReleaseSecCtxResults
 	var cbuf, rbuf bytes.Buffer
 
-	args.CallCtx = callCtx
+	args.CallCtx = *callCtx
 	args.What = intGSSX_C_HANDLE_SEC_CTX
-	args.SecCtx, err = uncookSecCtx(ctx)
+	args.SecCtx, err = uncookSecCtx(*ctx)
 	if err != nil {
 		return
 	}
@@ -1746,7 +1752,7 @@ type GetMicResults struct {
 }
 
 /* GetMic computes an integrity checksum over the passed-in message and returns the checksum.  If a SecCtx is returned, then the passed-in ctx value should be discarded in its favor. */
-func GetMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, qopReq uint64, message []byte) (results GetMicResults, err error) {
+func GetMic(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, qopReq uint64, message []byte) (results GetMicResults, err error) {
 	var args struct {
 		CallCtx       CallCtx
 		SecCtx        rawSecCtx
@@ -1763,8 +1769,8 @@ func GetMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, qopReq uint64, message 
 	var cooked GetMicResults
 	var cbuf, rbuf bytes.Buffer
 
-	args.CallCtx = callCtx
-	args.SecCtx, err = uncookSecCtx(ctx)
+	args.CallCtx = *callCtx
+	args.SecCtx, err = uncookSecCtx(*ctx)
 	if err != nil {
 		return
 	}
@@ -1796,6 +1802,9 @@ func GetMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, qopReq uint64, message 
 			return
 		}
 		cooked.SecCtx = &sctmp
+		if ctx != nil {
+			*ctx = sctmp
+		}
 	}
 	cooked.TokenBuffer = res.TokenBuffer
 	if len(res.QopState) > 0 {
@@ -1813,7 +1822,7 @@ type VerifyMicResults struct {
 }
 
 /* VerifyMic checks an already-computed integrity checksum over the passed-in plaintext.  If a SecCtx is returned, then the passed-in ctx value should be discarded in its favor. */
-func VerifyMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, messageBuffer, tokenBuffer []byte) (results VerifyMicResults, err error) {
+func VerifyMic(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, messageBuffer, tokenBuffer []byte) (results VerifyMicResults, err error) {
 	var args struct {
 		CallCtx                    CallCtx
 		SecCtx                     rawSecCtx
@@ -1828,8 +1837,8 @@ func VerifyMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, messageBuffer, token
 	var cooked VerifyMicResults
 	var cbuf, rbuf bytes.Buffer
 
-	args.CallCtx = callCtx
-	args.SecCtx, err = uncookSecCtx(ctx)
+	args.CallCtx = *callCtx
+	args.SecCtx, err = uncookSecCtx(*ctx)
 	if err != nil {
 		return
 	}
@@ -1861,6 +1870,9 @@ func VerifyMic(conn *net.Conn, callCtx CallCtx, ctx SecCtx, messageBuffer, token
 			return
 		}
 		cooked.SecCtx = &sctmp
+		if ctx != nil {
+			*ctx = sctmp
+		}
 	}
 	if len(res.QopState) > 0 {
 		cooked.QopState = res.QopState[0]
@@ -1879,7 +1891,7 @@ type WrapResults struct {
 }
 
 /* Wrap applies protection to plaintext, optionally using confidentiality, and returns a suitably encapsulated copy of the plaintext.  If a SecCtx is returned, then the passed-in ctx value should be discarded in its favor. */
-func Wrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, confReq bool, message [][]byte, qopState uint64) (results WrapResults, err error) {
+func Wrap(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, confReq bool, message [][]byte, qopState uint64) (results WrapResults, err error) {
 	var args struct {
 		CallCtx       CallCtx
 		SecCtx        rawSecCtx
@@ -1898,8 +1910,8 @@ func Wrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, confReq bool, message [][
 	var cooked WrapResults
 	var cbuf, rbuf bytes.Buffer
 
-	args.CallCtx = callCtx
-	args.SecCtx, err = uncookSecCtx(ctx)
+	args.CallCtx = *callCtx
+	args.SecCtx, err = uncookSecCtx(*ctx)
 	if err != nil {
 		return
 	}
@@ -1932,6 +1944,9 @@ func Wrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, confReq bool, message [][
 			return
 		}
 		cooked.SecCtx = &sctmp
+		if ctx != nil {
+			*ctx = sctmp
+		}
 	}
 	cooked.TokenBuffer = res.TokenBuffer
 	if len(res.ConfState) > 0 {
@@ -1954,7 +1969,7 @@ type UnwrapResults struct {
 }
 
 /* Unwrap verifies protection on plaintext, optionally removing a confidentiality layer, and returns the plaintext.  If a SecCtx is returned, then the passed-in ctx value should be discarded in its favor. */
-func Unwrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, message [][]byte, qopReq uint64) (results UnwrapResults, err error) {
+func Unwrap(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, message [][]byte, qopReq uint64) (results UnwrapResults, err error) {
 	var args struct {
 		CallCtx       CallCtx
 		SecCtx        rawSecCtx
@@ -1972,8 +1987,8 @@ func Unwrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, message [][]byte, qopRe
 	var cooked UnwrapResults
 	var cbuf, rbuf bytes.Buffer
 
-	args.CallCtx = callCtx
-	args.SecCtx, err = uncookSecCtx(ctx)
+	args.CallCtx = *callCtx
+	args.SecCtx, err = uncookSecCtx(*ctx)
 	if err != nil {
 		return
 	}
@@ -2005,6 +2020,9 @@ func Unwrap(conn *net.Conn, callCtx CallCtx, ctx SecCtx, message [][]byte, qopRe
 			return
 		}
 		cooked.SecCtx = &sctmp
+		if ctx != nil {
+			*ctx = sctmp
+		}
 	}
 	cooked.TokenBuffer = res.TokenBuffer
 	if len(res.ConfState) > 0 {
@@ -2024,7 +2042,7 @@ type WrapSizeLimitResults struct {
 }
 
 /* WrapSizeLimit computes the maximum size of a message that can be wrapped if the resulting message token is to be at most reqOutputSize bytes in length. */
-func WrapSizeLimit(conn *net.Conn, callCtx CallCtx, ctx SecCtx, confReq bool, qopReq, reqOutputSize uint64) (results WrapSizeLimitResults, err error) {
+func WrapSizeLimit(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, confReq bool, qopReq, reqOutputSize uint64) (results WrapSizeLimitResults, err error) {
 	var args struct {
 		CallCtx       CallCtx
 		SecCtx        rawSecCtx
@@ -2039,8 +2057,8 @@ func WrapSizeLimit(conn *net.Conn, callCtx CallCtx, ctx SecCtx, confReq bool, qo
 	var cooked WrapSizeLimitResults
 	var cbuf, rbuf bytes.Buffer
 
-	args.CallCtx = callCtx
-	args.SecCtx, err = uncookSecCtx(ctx)
+	args.CallCtx = *callCtx
+	args.SecCtx, err = uncookSecCtx(*ctx)
 	if err != nil {
 		return
 	}
@@ -2079,7 +2097,7 @@ type SetNegMechsResults struct {
 }
 
 /* SetNegMechs sets the list of mechanisms which will be offered if we attempt to initialize a security context using the SPNEGO mechanism. */
-func SetNegMechs(conn *net.Conn, callCtx CallCtx, cred *Cred, mechTypes *[]asn1.ObjectIdentifier) (results SetNegMechsResults, err error) {
+func SetNegMechs(conn *net.Conn, callCtx *CallCtx, cred *Cred, mechTypes *[]asn1.ObjectIdentifier) (results SetNegMechsResults, err error) {
 	cred.negotiateMechs = mechTypes
 	results.Status.ServerCtx = callCtx.ServerCtx
 	return
