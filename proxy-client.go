@@ -47,6 +47,9 @@ func connectOnce(pconn *net.Conn, pcc *proxy.CallCtx, host string, port int, ser
 					fmt.Printf("\n")
 				}
 			}
+			if cred.NeedsRelease {
+				defer proxy.ReleaseCred(pconn, pcc, cred)
+			}
 			/* Set the mechs to be negotiated. */
 			mechs := make([]asn1.ObjectIdentifier, 1)
 			mechs[0] = mech
