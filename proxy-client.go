@@ -3,6 +3,7 @@ package main
 import "bytes"
 import "flag"
 import "encoding/asn1"
+import "encoding/json"
 import "fmt"
 import "gss/proxy"
 import "gss/misc"
@@ -36,6 +37,16 @@ func connectOnce(pconn *net.Conn, pcc *proxy.CallCtx, host string, port int, ser
 				return
 			}
 			cred = acr.OutputCredHandle
+			if !quiet {
+				creds, err := json.Marshal(cred)
+				if err == nil {
+					var buf bytes.Buffer
+					fmt.Printf("= Client Creds = ")
+					json.Indent(&buf, creds, "=", "\t")
+					buf.WriteTo(os.Stdout)
+					fmt.Printf("\n")
+				}
+			}
 			/* Set the mechs to be negotiated. */
 			mechs := make([]asn1.ObjectIdentifier, 1)
 			mechs[0] = mech
