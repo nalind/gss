@@ -31,7 +31,7 @@ const (
 	intUNWRAP                = 14
 	intWRAP_SIZE_LIMIT       = 15
 
-	/* Request the highest-available lifetime. */
+	/* Request the highest-available lifetime in AcquireCred() and InitSecContext(). */
 	C_INDEFINITE = 0xffffffff
 
 	/* Credential Usage values to be passed to ExportCred() and StoreCred(). */
@@ -55,7 +55,7 @@ const (
 	intGSS_C_TRANS_FLAG        = 256
 	intGSS_C_DELEG_POLICY_FLAG = 32768
 
-	/* Status codes. */
+	/* Status codes seen in MajorStatus values. */
 	S_COMPLETE = 0
 
 	intGSS_C_CALLING_ERROR_OFFSET = 24
@@ -88,7 +88,7 @@ const (
 	S_NAME_NOT_MN          = (18 << intGSS_C_ROUTINE_ERROR_OFFSET)
 	S_BAD_MECH_ATTR        = (19 << intGSS_C_ROUTINE_ERROR_OFFSET)
 
-	/* Default quality of protection. */
+	/* Default quality of protection, for passing to GetMic()/Wrap(). */
 	C_QOP_DEFAULT = 0
 
 	/* SPNEGO status codes. */
@@ -99,7 +99,7 @@ const (
 )
 
 var (
-	/* Known name types. */
+	/* Known name types, for use in Name structures. */
 	NT_USER_NAME           = parseOid("1.2.840.113554.1.2.1.1")
 	NT_MACHINE_UID_NAME    = parseOid("1.2.840.113554.1.2.1.2")
 	NT_STRING_UID_NAME     = parseOid("1.2.840.113554.1.2.1.3")
@@ -848,7 +848,7 @@ type GetCallContextResults struct {
 	Options   []Option
 }
 
-/* GetCallContext returns a ServerCtx value which should be used in subsequent calls to this proxy server.  As of gss-proxy 0.3.1, the proxy implementation is a no-op. */
+/* GetCallContext returns a ServerCtx value which should be used in subsequent calls to this proxy server.  As of gss-proxy 0.3.1, the proxy implementation is a no-op, so an empty initial value can be used. */
 func GetCallContext(conn *net.Conn, callCtx *CallCtx, options []Option) (results GetCallContextResults, err error) {
 	var args struct {
 		CallCtx CallCtx
@@ -1953,7 +1953,7 @@ type GetMicResults struct {
 	QopState    uint64
 }
 
-/* GetMic computes an integrity checksum over the passed-in message and returns the checksum.  If a SecCtx is returned, then the passed-in ctx value should be discarded in its favor. */
+/* GetMic computes an integrity checksum over the passed-in message and returns the checksum. */
 func GetMic(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, qopReq uint64, message []byte) (results GetMicResults, err error) {
 	var args struct {
 		CallCtx       CallCtx
@@ -2023,7 +2023,7 @@ type VerifyMicResults struct {
 	QopState uint64
 }
 
-/* VerifyMic checks an already-computed integrity checksum over the passed-in plaintext.  If a SecCtx is returned, then the passed-in ctx value should be discarded in its favor. */
+/* VerifyMic checks an already-computed integrity checksum over the passed-in plaintext. */
 func VerifyMic(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, messageBuffer, tokenBuffer []byte) (results VerifyMicResults, err error) {
 	var args struct {
 		CallCtx                    CallCtx
@@ -2092,14 +2092,14 @@ type WrapResults struct {
 	QopState    uint64
 }
 
-/* Wrap applies protection to plaintext, optionally using confidentiality, and returns a suitably encapsulated copy of the plaintext.  If a SecCtx is returned, then the passed-in ctx value should be discarded in its favor. */
-func Wrap(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, confReq bool, message [][]byte, qopState uint64) (results WrapResults, err error) {
+/* Wrap applies protection to plaintext, optionally using confidentiality, and returns a suitably encapsulated copy of the plaintext. */
+func Wrap(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, confReq bool, message [][]byte, qopReq uint64) (results WrapResults, err error) {
 	var args struct {
 		CallCtx       CallCtx
 		SecCtx        rawSecCtx
 		ConfReq       bool
 		MessageBuffer [][]byte
-		QopState      uint64
+		QopReq        uint64
 	}
 	var res struct {
 		Status      rawStatus
@@ -2119,7 +2119,7 @@ func Wrap(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, confReq bool, message [
 	}
 	args.ConfReq = confReq
 	args.MessageBuffer = message
-	args.QopState = qopState
+	args.QopReq = qopReq
 	_, err = xdr.Marshal(&cbuf, &args)
 	if err != nil {
 		return
@@ -2170,7 +2170,7 @@ type UnwrapResults struct {
 	QopState    uint64
 }
 
-/* Unwrap verifies protection on plaintext, optionally removing a confidentiality layer, and returns the plaintext.  If a SecCtx is returned, then the passed-in ctx value should be discarded in its favor. */
+/* Unwrap verifies protection on plaintext, optionally removing a confidentiality layer, and returns the plaintext. */
 func Unwrap(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, message [][]byte, qopReq uint64) (results UnwrapResults, err error) {
 	var args struct {
 		CallCtx       CallCtx

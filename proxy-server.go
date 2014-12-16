@@ -323,7 +323,7 @@ func main() {
 					return
 				}
 				if len(ecr.ExportedHandle) == 0 {
-					fmt.Fprintf(log, "ExportCred() succeeded but produced nothing.\n")
+					fmt.Fprintf(log, "Error: ExportCred() succeeded but produced nothing.\n")
 					return
 				}
 				icr, err := proxy.ImportCred(&pconn, &call, ecr.ExportedHandle, nil)
