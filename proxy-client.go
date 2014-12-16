@@ -10,15 +10,39 @@ import "net"
 import "os"
 import "strings"
 
-func connectOnce(pconn *net.Conn, pcc *proxy.CallCtx, host string, port int, service string, mcount int, quiet bool, plain []byte, v1 bool, nmech *asn1.ObjectIdentifier, mech asn1.ObjectIdentifier, delegate, seq, noreplay, nomutual, noauth, nowrap, noenc, nomic bool) {
+func connectOnce(pconn *net.Conn, pcc *proxy.CallCtx, host string, port int, service string, mcount int, quiet bool, plain []byte, v1, spnego bool, nmech *asn1.ObjectIdentifier, mech asn1.ObjectIdentifier, delegate, seq, noreplay, nomutual, noauth, nowrap, noenc, nomic bool) {
 	var ctx proxy.SecCtx
 	var status proxy.Status
+	var cred *proxy.Cred
 	var tag byte
 	var ptoken *[]byte
 	var major, minor uint64
 	var sname proxy.Name
 	var localstate, openstate string
 	var flags proxy.Flags
+
+	if spnego {
+		/* If we're doing SPNEGO, then a passed-in mechanism OID is the
+		 * one we want to negotiate using SPNEGO. */
+		if mech != nil {
+			/* Acquire creds on which we can set the mechs to be negotiated. */
+			acr, err := proxy.AcquireCred(pconn, pcc, nil, false, nil, proxy.C_INDEFINITE, nil, proxy.C_INITIATE, proxy.C_INDEFINITE, proxy.C_INDEFINITE, nil)
+			if err != nil {
+				fmt.Printf("Error acquiring initiator creds: %s\n", err)
+				os.Exit(2)
+			}
+			if acr.Status.MajorStatus != proxy.S_COMPLETE {
+				DisplayProxyStatus("acquiring initiator creds", acr.Status)
+				return
+			}
+			cred = acr.OutputCredHandle
+			/* Set the mechs to be negotiated. */
+			mechs := make([]asn1.ObjectIdentifier, 1)
+			mechs[0] = mech
+			proxy.SetNegMechs(pconn, pcc, cred, &mechs)
+		}
+		mech = misc.ParseOid("1.3.6.1.5.5.2")
+	}
 
 	/* Open the connection. */
 	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", host, port))
@@ -57,7 +81,7 @@ func connectOnce(pconn *net.Conn, pcc *proxy.CallCtx, host string, port int, ser
 		flags = proxy.Flags{Deleg: delegate, Sequence: seq, Replay: !noreplay, Conf: !noenc, Integ: !nomic, Mutual: !nomutual}
 		for true {
 			/* Start/continue. */
-			iscr, err := proxy.InitSecContext(pconn, pcc, &ctx, nil, &sname, mech, flags, proxy.C_INDEFINITE, nil, ptoken, nil)
+			iscr, err := proxy.InitSecContext(pconn, pcc, &ctx, cred, &sname, mech, flags, proxy.C_INDEFINITE, nil, ptoken, nil)
 			if err != nil {
 				fmt.Printf("Error initializing security context: %s\n", err)
 				return
@@ -294,12 +318,7 @@ func main() {
 		buffer := bytes.NewBufferString(msg)
 		plain = buffer.Bytes()
 	}
-	if *spnego {
-		/* If we're doing SPNEGO, then a passed-in mechanism OID is the one we want to negotiate, but we can't. */
-		fmt.Printf("Warning: set_neg_mechs is not available.\n")
-		tmpmech := misc.ParseOid("1.3.6.1.5.5.2")
-		mech = tmpmech
-	} else if *krb5 {
+	if *krb5 {
 		/* This is the OID from the RFC.  The native tests would use the pre-RFC OID. */
 		tmpmech := misc.ParseOid("1.2.840.113554.1.2.2")
 		nmech = &tmpmech
@@ -336,6 +355,6 @@ func main() {
 	}
 
 	for c := 0; c < *ccount; c++ {
-		connectOnce(&pconn, &call, host, *port, service, *mcount, *quiet, plain, *v1, nmech, mech, *delegate, *seq, *noreplay, *nomutual, *noauth, *nowrap, *noenc, *nomic)
+		connectOnce(&pconn, &call, host, *port, service, *mcount, *quiet, plain, *v1, *spnego, nmech, mech, *delegate, *seq, *noreplay, *nomutual, *noauth, *nowrap, *noenc, *nomic)
 	}
 }
