@@ -523,14 +523,27 @@ func cookStatus(s rawStatus) (cooked Status, err error) {
 	cooked.MinorStatus = s.MinorStatus
 	cooked.MajorStatusString = s.MajorStatusString
 	cooked.MinorStatusString = s.MinorStatusString
+	cooked.ServerCtx = s.ServerCtx
 	cooked.Options = s.Options
 	return
 }
 
+type spnegoInitState struct {
+	mech                                               asn1.ObjectIdentifier
+	baseComplete, needMic, sendMic, sentMic, protReady bool
+}
+type spnegoAcceptState struct {
+	mech                                                    asn1.ObjectIdentifier
+	mechList                                                []byte
+	baseComplete, needMic, sendMic, sentMic, sentMicRequest bool
+}
+
 type CallCtx struct {
-	Locale    string
-	ServerCtx []byte
-	Options   []Option
+	Locale       string
+	ServerCtx    []byte
+	Options      []Option
+	spnegoInit   spnegoInitState
+	spnegoAccept spnegoAcceptState
 }
 
 type rawName struct {
@@ -1248,7 +1261,10 @@ type InitSecContextResults struct {
 func InitSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, targetName *Name, mechType asn1.ObjectIdentifier, reqFlags Flags, timeReq uint64, inputCB, inputToken *[]byte, options []Option) (results InitSecContextResults, err error) {
 	var inct initialNegContextToken
 	var resp negTokenResp
+	var ntr negotiateResp
 	var token []byte
+	var gmr GetMicResults
+	var vmr VerifyMicResults
 
 	if len(mechType) == 0 || !mechType.Equal(MechSPNEGO) {
 		if len(mechType) == 0 {
@@ -1257,11 +1273,23 @@ func InitSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, t
 		return proxyInitSecContext(conn, callCtx, ctx, cred, targetName, mechType, reqFlags, timeReq, inputCB, inputToken, options)
 	}
 
+	if cred != nil && cred.negotiateMechs != nil && len(*cred.negotiateMechs) > 0 {
+		inct.NegTokenInit.MechTypes = *cred.negotiateMechs
+	} else {
+		inct.NegTokenInit.MechTypes = defaultSPNEGOMechs
+	}
+
 	if inputToken != nil {
 		/* Parse a reply from the peer. */
 		_, err = asn1.UnmarshalWithParams(*inputToken, &resp, "explicit,tag:1")
 		if err != nil {
 			return proxyInitSecContext(conn, callCtx, ctx, cred, targetName, mechType, reqFlags, timeReq, inputCB, inputToken, options)
+		}
+		/* If the status is "request-mic", make a note and treat it as "incomplete". */
+		if resp.NegState == negStateRequestMic {
+			callCtx.spnegoInit.sendMic = true
+			callCtx.spnegoInit.needMic = true
+			resp.NegState = negStateAcceptIncomplete
 		}
 		/* Check that we're still okay. */
 		if resp.NegState != negStateAcceptCompleted && resp.NegState != negStateAcceptIncomplete {
@@ -1271,85 +1299,138 @@ func InitSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, t
 		}
 		/* If there's a mech indicated, check that it's one that we wanted. */
 		if len(resp.SupportedMech) > 0 {
-			if cred != nil && cred.negotiateMechs != nil && len(*cred.negotiateMechs) > 0 && (*cred.negotiateMechs)[0].Equal(resp.SupportedMech) {
-				/* Not our preferred specified mech. */
-				results.Status.MajorStatus = S_BAD_MECH
-				results.Status.MajorStatusString = fmt.Sprintf("bad SPNEGO preferred mechanism [%s]", resp.SupportedMech)
-				return
-			} else {
-				if !mechIsKerberos(resp.SupportedMech) {
-					/* Not a Kerberos mech. */
-					results.Status.MajorStatus = S_BAD_MECH
-					results.Status.MajorStatusString = fmt.Sprintf("bad SPNEGO preferred mechanism [%s]", resp.SupportedMech)
-					return
-				} else {
-					/* It's a mech that we wanted. */
-					inputToken = &resp.ResponseToken
-					mechType = resp.SupportedMech
-				}
-			}
-		} else {
-			/* Just assume it's the right mech and the proxy knows what to do with the inner token. */
-			inputToken = &resp.ResponseToken
-			mechType = defaultSPNEGOMechs[0]
+			callCtx.spnegoInit.mech = resp.SupportedMech
 		}
+		if !mechIsKerberos(callCtx.spnegoInit.mech) {
+			/* Not a Kerberos mech. */
+			results.Status.MajorStatus = S_BAD_MECH
+			results.Status.MajorStatusString = fmt.Sprintf("bad SPNEGO preferred mechanism [%s]", callCtx.spnegoInit.mech)
+			return
+		}
+		if len(resp.ResponseToken) > 0 {
+			inputToken = &resp.ResponseToken
+		} else {
+			inputToken = nil
+		}
+		mechType = callCtx.spnegoInit.mech
 	} else {
 		/* First time through, specify which mech to use. */
+		callCtx.spnegoInit = spnegoInitState{}
 		if cred != nil && cred.negotiateMechs != nil && len(*cred.negotiateMechs) > 0 {
-			mechType = (*cred.negotiateMechs)[0]
+			callCtx.spnegoInit.mech = (*cred.negotiateMechs)[0]
 		} else {
-			mechType = defaultSPNEGOMechs[0]
+			callCtx.spnegoInit.mech = defaultSPNEGOMechs[0]
 		}
+		mechType = callCtx.spnegoInit.mech
 	}
-	/* Call the real mechanism. */
-	results, err = proxyInitSecContext(conn, callCtx, ctx, cred, targetName, mechType, reqFlags, timeReq, inputCB, inputToken, options)
-	if results.Status.MajorStatus != S_COMPLETE && results.Status.MajorStatus != S_CONTINUE_NEEDED {
-		return
-	}
-	/* Don't advertise that we can do MICs yet if we don't know that the peer wants us to sign the negotiation. */
-	if results.Status.MajorStatus == S_CONTINUE_NEEDED {
-		results.SecCtx.Flags.ProtReady = false
-	}
-	if inputToken != nil {
-		if resp.NegState == negStateAcceptCompleted && results.OutputToken != nil {
-			/* Peer is not expecting more data, but we have some to send. */
-			results.Status.MajorStatus = S_BAD_STATUS
-			results.Status.MajorStatusString = "have SPNEGO data to send, but peer expects none"
+
+	/* Call the proxy for the real mechanism. */
+	err = nil
+	if !callCtx.spnegoInit.baseComplete {
+		results, err = proxyInitSecContext(conn, callCtx, ctx, cred, targetName, mechType, reqFlags, timeReq, inputCB, inputToken, options)
+		if results.Status.MajorStatus != S_COMPLETE && results.Status.MajorStatus != S_CONTINUE_NEEDED {
 			return
 		}
-		if resp.NegState == negStateAcceptIncomplete && results.OutputToken == nil {
-			/* Peer is expecting more data, but we have none to send. */
-			results.Status.MajorStatus = S_BAD_STATUS
-			results.Status.MajorStatusString = "have no SPNEGO data to send, but peer expects some"
-			return
+		if results.Status.MajorStatus == S_COMPLETE {
+			callCtx.spnegoInit.baseComplete = true
+			callCtx.spnegoInit.protReady = results.SecCtx.Flags.ProtReady
 		}
+	} else {
+		results.SecCtx = ctx
+		results.Status.MajorStatus = S_COMPLETE
 	}
-	/* Create an SPNEGO token if there's data to send. */
-	if results.OutputToken != nil {
-		inct.ThisMech = MechSPNEGO
-		if cred != nil && cred.negotiateMechs != nil && len(*cred.negotiateMechs) > 0 {
-			inct.NegTokenInit.MechTypes = *cred.negotiateMechs
-		} else {
-			inct.NegTokenInit.MechTypes = defaultSPNEGOMechs
-		}
-		inct.NegTokenInit.MechToken = *results.OutputToken
-		/* Encode the SPNEGO intiator. */
-		if inputToken != nil {
-			/* Second-or-later pass, don't include the mech OID framing. */
-			token, err = asn1.Marshal(inct.NegTokenInit)
+
+	/* If the acceptor sent us a MIC already, verify it now. */
+	if len(resp.MechListMic) > 0 {
+		if callCtx.spnegoInit.baseComplete {
+			token, err = asn1.Marshal(inct.NegTokenInit.MechTypes)
 			if err != nil {
+				results.OutputToken = nil
+				results.Status.MajorStatus = S_FAILURE
+				results.Status.MajorStatusString = "internal error in SPNEGO"
 				return
 			}
-			/* Strip off the outermost sequence tag and add a context-specific one. */
+			fmt.Printf("VerifyMic\n")
+			vmr, err = VerifyMic(conn, callCtx, ctx, token, resp.MechListMic)
+			if err != nil {
+				results.OutputToken = nil
+				results.Status.MajorStatus = S_FAILURE
+				results.Status.MajorStatusString = "internal error in SPNEGO"
+				return
+			}
+			if vmr.Status.MajorStatus != S_COMPLETE {
+				results.OutputToken = nil
+				results.Status.MajorStatus = S_DEFECTIVE_TOKEN
+				results.Status.MajorStatusString = "bad SPNEGO MIC"
+				return
+			}
+			callCtx.spnegoInit.needMic = false
+			/* Send the MIC next, if we haven't yet. */
+			callCtx.spnegoInit.sendMic = !callCtx.spnegoInit.sentMic
+		} else {
+			results.OutputToken = nil
+			results.Status.MajorStatus = S_DEFECTIVE_TOKEN
+			results.Status.MajorStatusString = "not ready for SPNEGO MIC"
+			return
+		}
+	}
+
+	/* If we were told to send a MIC, compute it now. */
+	if callCtx.spnegoInit.sendMic && callCtx.spnegoInit.baseComplete {
+		token, err = asn1.Marshal(inct.NegTokenInit.MechTypes)
+		if err != nil {
+			results.OutputToken = nil
+			results.Status.MajorStatus = S_FAILURE
+			results.Status.MajorStatusString = "internal error in SPNEGO"
+			return
+		}
+		gmr, err = GetMic(conn, callCtx, ctx, C_QOP_DEFAULT, token)
+		fmt.Printf("GetMic\n")
+		if err != nil {
+			results.OutputToken = nil
+			results.Status.MajorStatus = S_FAILURE
+			results.Status.MajorStatusString = "internal error in SPNEGO"
+			return
+		}
+		inct.NegTokenInit.MechListMic = gmr.TokenBuffer
+		callCtx.spnegoInit.sentMic = true
+		callCtx.spnegoInit.sendMic = false
+	}
+
+	/* Create an SPNEGO token if there's data to send. */
+	inct.ThisMech = MechSPNEGO
+	if results.OutputToken != nil || len(inct.NegTokenInit.MechListMic) > 0 {
+		if results.OutputToken != nil {
+			inct.NegTokenInit.MechToken = *results.OutputToken
+		}
+		/* Encode the SPNEGO token. */
+		if inputToken != nil {
+			/* Second-or-later pass, use a Response message. */
+			if !callCtx.spnegoInit.needMic && callCtx.spnegoInit.baseComplete {
+				ntr.NegTokenResp.NegState = negStateAcceptCompleted
+			} else {
+				ntr.NegTokenResp.NegState = negStateAcceptIncomplete
+			}
+			ntr.NegTokenResp.SupportedMech = callCtx.spnegoInit.mech
+			ntr.NegTokenResp.ResponseToken = inct.NegTokenInit.MechToken
+			ntr.NegTokenResp.MechListMic = inct.NegTokenInit.MechListMic
+			token, err = asn1.Marshal(ntr)
+			if err != nil {
+				results.OutputToken = nil
+				results.Status.MajorStatus = S_FAILURE
+				results.Status.MajorStatusString = "internal error in SPNEGO"
+				return
+			}
+			/* Strip off the outermost sequence tag. */
 			_, _, _, _, raw := splitTagAndLength(token)
-			tl := makeTagAndLength(0xa0, len(raw))
-			buf := bytes.NewBuffer(tl)
-			buf.Write(raw)
-			token = buf.Bytes()
+			token = raw
 		} else {
 			/* First-pass, include the mech OID. */
 			token, err = asn1.Marshal(inct)
 			if err != nil {
+				results.OutputToken = nil
+				results.Status.MajorStatus = S_FAILURE
+				results.Status.MajorStatusString = "internal error in SPNEGO"
 				return
 			}
 			/* Strip off the outermost sequence tag and add an implicit application one. */
@@ -1360,6 +1441,31 @@ func InitSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, t
 			token = buf.Bytes()
 		}
 		results.OutputToken = &token
+		/* We always expect more from the acceptor. */
+		if callCtx.spnegoInit.baseComplete && len(inct.NegTokenInit.MechToken) == 0 && !callCtx.spnegoInit.needMic {
+			fmt.Printf("Complete 1\n")
+			results.Status.MajorStatus = S_COMPLETE
+			/* Restore the context flag. */
+			results.SecCtx.Flags.ProtReady = callCtx.spnegoInit.protReady
+		} else {
+			fmt.Printf("Continue 1\n")
+			results.Status.MajorStatus = S_CONTINUE_NEEDED
+			/* Don't advertise that we can do MICs yet if we still have messages to receive. */
+			results.SecCtx.Flags.ProtReady = false
+		}
+	} else {
+		/* No data to send means we're not expecting a reply. */
+		if callCtx.spnegoInit.baseComplete {
+			fmt.Printf("Complete 2\n")
+			results.OutputToken = nil
+			results.Status.MajorStatus = S_COMPLETE
+			/* Restore the context flag. */
+			results.SecCtx.Flags.ProtReady = callCtx.spnegoInit.protReady
+		} else {
+			results.OutputToken = nil
+			results.Status.MajorStatus = S_FAILURE
+			results.Status.MajorStatusString = "internal error in SPNEGO"
+		}
 	}
 	return
 }
@@ -1491,66 +1597,159 @@ type AcceptSecContextResults struct {
 func AcceptSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, inputToken []byte, inputCB *[]byte, retDelegCred bool, options []Option) (results AcceptSecContextResults, err error) {
 	var inct initialNegContextToken
 	var resp negotiateResp
+	var nct negTokenResp
 	var token []byte
+	var vmr VerifyMicResults
+	var gmr GetMicResults
 
-	/* Try to parse it as an SPNEGO initiator token. */
-	_, err = asn1.UnmarshalWithParams(inputToken, &ict, "application,tag:0")
-	if err != nil || !ict.ThisMech.Equal(MechSPNEGO) || len(ict.NegTokenInit.MechTypes) == 0 {
-		_, err = asn1.UnmarshalWithParams(inputToken, &ict.NegTokenInit, "tag:0")
+	/* Try to parse it as a generic initiator token. */
+	_, err = asn1.UnmarshalWithParams(inputToken, &inct, "application,tag:0")
+	if err != nil || !inct.ThisMech.Equal(MechSPNEGO) || len(inct.NegTokenInit.MechTypes) == 0 {
+		/* Try to parse it as a secondary message. */
+		_, err = asn1.UnmarshalWithParams(inputToken, &nct, "explicit,tag:1")
 		if err != nil {
+			callCtx.spnegoAccept = spnegoAcceptState{}
 			return proxyAcceptSecContext(conn, callCtx, ctx, cred, inputToken, inputCB, retDelegCred, options)
 		}
+		/* Check if we're okay. */
+		if nct.NegState != negStateAcceptCompleted && nct.NegState != negStateAcceptIncomplete {
+			results.Status.MajorStatus = S_BAD_STATUS
+			results.Status.MajorStatusString = fmt.Sprintf("SPNEGO status %d not handled by this implementation", nct.NegState)
+			return
+		}
+	} else {
+		/* New initiator. */
+		callCtx.spnegoAccept = spnegoAcceptState{}
+		callCtx.spnegoAccept.needMic = true
+		/* Pull the mechtype list from the initiator token and check for one that we support. */
+		for i, mech := range inct.NegTokenInit.MechTypes {
+			if mechIsKerberos(mech) {
+				callCtx.spnegoAccept.mech = mech
+				if i == 0 {
+					/* No need to do a MIC exchange. */
+					callCtx.spnegoAccept.needMic = false
+				}
+				break
+			}
+		}
+		if len(callCtx.spnegoAccept.mech) == 0 {
+			/* Return an SPNEGO error. */
+			results.Status.MajorStatus = S_BAD_MECH
+			results.Status.MajorStatusString = "bad SPNEGO mechanism list - no compatible mechanism"
+			resp.NegTokenResp.NegState = negStateReject
+			return
+		}
+		/* Encode the list of mechanisms for signing/verifying. */
+		callCtx.spnegoAccept.mechList, err = asn1.Marshal(inct.NegTokenInit.MechTypes)
+		if err != nil {
+			results.OutputToken = nil
+			results.Status.MajorStatus = S_DEFECTIVE_TOKEN
+			results.Status.MajorStatusString = "no mech list in SPNEGO token"
+			return
+		}
+		/* Pull out the mech token and the mechlist MIC. */
+		nct.ResponseToken = inct.NegTokenInit.MechToken
+		nct.MechListMic = inct.NegTokenInit.MechListMic
 	}
-	/* Check if the client's requested one of our preferred mechanisms. */
-	preferredMech := ict.NegTokenInit.MechTypes[0]
-	if len(preferredMech) == 0 || mechIsKerberos(preferredMech) {
+	/* Process the selected mech's token. */
+	resp.NegTokenResp.SupportedMech = callCtx.spnegoAccept.mech
+	err = nil
+	if !callCtx.spnegoAccept.baseComplete {
 		/* Pass the mechanism-specific token on to the proxy. */
-		results, err = proxyAcceptSecContext(conn, callCtx, ctx, cred, ict.NegTokenInit.MechToken, inputCB, retDelegCred, options)
+		results, err = proxyAcceptSecContext(conn, callCtx, ctx, cred, nct.ResponseToken, inputCB, retDelegCred, options)
 		if err == nil {
 			/* Interpret the proxy's result. */
-			if results.Status.MajorStatus == S_COMPLETE {
-				resp.NegTokenResp.NegState = negStateAcceptCompleted
-				if len(preferredMech) == 0 {
-					preferredMech = results.SecCtx.Mech
+			if results.Status.MajorStatus == S_CONTINUE_NEEDED {
+				if callCtx.spnegoAccept.needMic && !callCtx.spnegoAccept.sentMicRequest {
+					resp.NegTokenResp.NegState = negStateRequestMic
+					callCtx.spnegoAccept.sentMicRequest = true
+				} else {
+					resp.NegTokenResp.NegState = negStateAcceptIncomplete
 				}
-			} else if results.Status.MajorStatus == S_CONTINUE_NEEDED {
-				resp.NegTokenResp.NegState = negStateAcceptIncomplete
+			} else if results.Status.MajorStatus == S_COMPLETE {
+				callCtx.spnegoAccept.baseComplete = true
+				resp.NegTokenResp.NegState = negStateAcceptCompleted
+				if results.OutputToken != nil && callCtx.spnegoAccept.needMic {
+					/* We send the mech list MIC first. */
+					callCtx.spnegoAccept.sendMic = true
+				}
 			} else {
 				resp.NegTokenResp.NegState = negStateReject
 			}
-			/* Set things up to encapsulate the mech reply. */
-			if len(preferredMech) != 0 {
-				resp.NegTokenResp.SupportedMech = preferredMech
-			} else {
-				resp.NegTokenResp.SupportedMech = MechKerberos5
-			}
+			/* Make sure we'll encapsulate the mech reply. */
 			if results.OutputToken != nil {
 				resp.NegTokenResp.ResponseToken = *results.OutputToken
 			}
 		} else {
 			/* Don't return an SPNEGO error token, but indicate an error. */
+			callCtx.spnegoAccept = spnegoAcceptState{}
 			results.OutputToken = nil
 			results.Status.MajorStatus = S_FAILURE
 			results.Status.MajorStatusString = "internal error in SPNEGO"
 			return
 		}
-	} else {
-		/* Return an SPNEGO error. */
-		results.Status.MajorStatus = S_BAD_MECH
-		results.Status.MajorStatusString = fmt.Sprintf("bad SPNEGO preferred mechanism [%s]", ict.NegTokenInit.MechTypes[0])
-		resp.NegTokenResp.NegState = negStateReject
 	}
-	/* Encode the SPNEGO reply; we always send data back. */
-	token, err = asn1.Marshal(resp)
-	results.OutputToken = nil
-	if err != nil {
-		results.Status.MajorStatus = S_FAILURE
-		results.Status.MajorStatusString = "internal error in SPNEGO"
-		return
+	if len(nct.MechListMic) > 0 {
+		/* Apparently we're here to verify a client MIC. */
+		vmr, err = VerifyMic(conn, callCtx, ctx, callCtx.spnegoAccept.mechList, nct.MechListMic)
+		if err != nil {
+			results.OutputToken = nil
+			results.Status.MajorStatus = S_FAILURE
+			results.Status.MajorStatusString = "internal error in SPNEGO"
+			return
+		}
+		if vmr.Status.MajorStatus != S_COMPLETE {
+			results.OutputToken = nil
+			results.Status.MajorStatus = S_DEFECTIVE_TOKEN
+			results.Status.MajorStatusString = "bad SPNEGO MIC"
+			return
+		}
+		results.Status.MajorStatus = S_COMPLETE
+		results.SecCtx = ctx
+		resp.NegTokenResp.NegState = negStateAcceptCompleted
+		callCtx.spnegoAccept.needMic = false
+		/* Send the MIC if we haven't yet. */
+		callCtx.spnegoAccept.sendMic = !callCtx.spnegoAccept.sentMic
 	}
-	/* Strip off the outermost sequence tag. */
-	_, _, _, _, raw := splitTagAndLength(token)
-	results.OutputToken = &raw
+	/* Compute the MIC to send to the initiator, if we need to send one. */
+	if callCtx.spnegoAccept.sendMic && callCtx.spnegoAccept.baseComplete {
+		gmr, err = GetMic(conn, callCtx, ctx, C_QOP_DEFAULT, callCtx.spnegoAccept.mechList)
+		if err != nil {
+			results.OutputToken = nil
+			results.Status.MajorStatus = S_FAILURE
+			results.Status.MajorStatusString = "internal error in SPNEGO"
+			return
+		}
+		if gmr.Status.MajorStatus != S_COMPLETE {
+			results.OutputToken = nil
+			results.Status.MajorStatus = S_DEFECTIVE_TOKEN
+			results.Status.MajorStatusString = "bad SPNEGO MIC"
+			return
+		}
+		resp.NegTokenResp.MechListMic = gmr.TokenBuffer
+		if callCtx.spnegoAccept.needMic {
+			/* We still expect the initiator's MIC. */
+			results.Status.MajorStatus = S_CONTINUE_NEEDED
+		} else {
+			/* We're actually done. */
+			results.Status.MajorStatus = S_COMPLETE
+		}
+		callCtx.spnegoAccept.sentMic = true
+		callCtx.spnegoAccept.sendMic = false
+	}
+	/* Encode the SPNEGO reply if we're sending anything back. */
+	if results.OutputToken != nil || len(resp.NegTokenResp.MechListMic) > 0 {
+		token, err = asn1.Marshal(resp)
+		if err != nil {
+			results.OutputToken = nil
+			results.Status.MajorStatus = S_FAILURE
+			results.Status.MajorStatusString = "internal error in SPNEGO"
+			return
+		}
+		/* Strip off the outermost sequence tag. */
+		_, _, _, _, raw := splitTagAndLength(token)
+		results.OutputToken = &raw
+	}
 	return
 }
 func proxyAcceptSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, inputToken []byte, inputCB *[]byte, retDelegCred bool, options []Option) (results AcceptSecContextResults, err error) {
