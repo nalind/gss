@@ -5,7 +5,7 @@ In broad strokes:
 * OIDs and OID sets are passed around as encoding/asn1 ObjectIdentifiers and arrays of encoding/asn1 ObjectIdentifiers
 * memory management is still very much done manually
 
-Package gss/proxy provides a client for [gss-proxy](https://fedorahosted.org/gss-proxy/).  The provided API is relatively stable but still subject to change.
+Package gss/proxy provides a client for [gss-proxy](https://fedorahosted.org/gss-proxy/).  The provided API is relatively stable but still subject to change, particularly around name attributes.
 * OIDs and OID sets are passed around as encoding/asn1 ObjectIdentifiers and arrays of encoding/asn1 ObjectIdentifiers
 * The single Release RPC is replaced with two wrappers: ReleaseCred and ReleaseSecCtx.
 * The proxy doesn't currently allow use of SPNEGO "credentials", so a minimal SPNEGO implementation is added here.
