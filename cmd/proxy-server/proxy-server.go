@@ -1,15 +1,18 @@
 package main
 
-import "bytes"
-import "flag"
-import "encoding/json"
-import "fmt"
-import "gss/proxy"
-import "gss/misc"
-import "net"
-import "io"
-import "os"
-import "strconv"
+import (
+	"bytes"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"strconv"
+
+	"github.com/nalind/gss/pkg/gss/misc"
+	"github.com/nalind/gss/pkg/gss/proxy"
+)
 
 func dump(file io.Writer, data []byte) {
 	var another bool
@@ -66,7 +69,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 				return
 			}
 			if ascr.Status.MajorStatus != proxy.S_COMPLETE && ascr.Status.MajorStatus != proxy.S_CONTINUE_NEEDED {
-				DisplayProxyStatus("accepting a context", ascr.Status)
+				proxy.DisplayProxyStatus("accepting a context", ascr.Status)
 				return
 			}
 			if ascr.OutputToken != nil {
@@ -85,7 +88,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 					return
 				}
 				if rcr.Status.MajorStatus != proxy.S_COMPLETE {
-					DisplayProxyStatus("releasing delegated credentials", rcr.Status)
+					proxy.DisplayProxyStatus("releasing delegated credentials", rcr.Status)
 					return
 				}
 			}
@@ -182,7 +185,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 				return
 			}
 			if ur.Status.MajorStatus != proxy.S_COMPLETE {
-				DisplayProxyStatus("unwrapping token", ur.Status)
+				proxy.DisplayProxyStatus("unwrapping token", ur.Status)
 				return
 			}
 			/* If we were told it was encrypted, and it wasn't, warn. */
@@ -211,7 +214,7 @@ func serve(pconn *net.Conn, pcc proxy.CallCtx, conn net.Conn, cred *proxy.Cred, 
 				return
 			}
 			if gmr.Status.MajorStatus != proxy.S_COMPLETE {
-				DisplayProxyStatus("unwrapping token", gmr.Status)
+				proxy.DisplayProxyStatus("unwrapping token", gmr.Status)
 				return
 			}
 			misc.SendToken(conn, misc.TOKEN_MIC, gmr.TokenBuffer)
@@ -272,7 +275,7 @@ func main() {
 		return
 	}
 	if gccr.Status.MajorStatus != proxy.S_COMPLETE {
-		DisplayProxyStatus("getting calling context", gccr.Status)
+		proxy.DisplayProxyStatus("getting calling context", gccr.Status)
 		return
 	}
 
@@ -288,7 +291,7 @@ func main() {
 			return
 		}
 		if acr.Status.MajorStatus != proxy.S_COMPLETE {
-			DisplayProxyStatus("acquiring credentials", acr.Status)
+			proxy.DisplayProxyStatus("acquiring credentials", acr.Status)
 			return
 		}
 		if acr.OutputCredHandle == nil {
@@ -319,7 +322,7 @@ func main() {
 					return
 				}
 				if ecr.Status.MajorStatus != proxy.S_COMPLETE {
-					DisplayProxyStatus("exporting a credential", ecr.Status)
+					proxy.DisplayProxyStatus("exporting a credential", ecr.Status)
 					return
 				}
 				if len(ecr.ExportedHandle) == 0 {
@@ -332,7 +335,7 @@ func main() {
 					return
 				}
 				if icr.Status.MajorStatus != proxy.S_COMPLETE {
-					DisplayProxyStatus("importing a credential", icr.Status)
+					proxy.DisplayProxyStatus("importing a credential", icr.Status)
 					return
 				}
 				cred = icr.OutputCredHandle

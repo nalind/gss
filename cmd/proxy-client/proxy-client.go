@@ -1,12 +1,14 @@
 package main
 
-import "bytes"
+import (
+	"bytes"
+)
 import "flag"
 import "encoding/asn1"
 import "encoding/json"
 import "fmt"
-import "gss/proxy"
-import "gss/misc"
+import "github.com/nalind/gss/pkg/gss/proxy"
+import "github.com/nalind/gss/pkg/gss/misc"
 import "net"
 import "os"
 import "strings"
@@ -80,7 +82,7 @@ func connectOnce(pconn *net.Conn, pcc *proxy.CallCtx, host string, port int, ser
 			return
 		}
 		if icnr.Status.MajorStatus != 0 {
-			DisplayProxyStatus("importing remote service name", icnr.Status)
+			proxy.DisplayProxyStatus("importing remote service name", icnr.Status)
 			return
 		}
 		sname = *icnr.Name
@@ -103,7 +105,7 @@ func connectOnce(pconn *net.Conn, pcc *proxy.CallCtx, host string, port int, ser
 			status = iscr.Status
 			major = status.MajorStatus
 			if major != proxy.S_COMPLETE && major != proxy.S_CONTINUE_NEEDED {
-				DisplayProxyStatus("initializing security context", iscr.Status)
+				proxy.DisplayProxyStatus("initializing security context", iscr.Status)
 				return
 			}
 			/* If we have an output token, we need to send it. */
@@ -148,7 +150,7 @@ func connectOnce(pconn *net.Conn, pcc *proxy.CallCtx, host string, port int, ser
 			return
 		}
 		if !quiet {
-			DisplayProxyFlags(flags, false, os.Stdout)
+			proxy.DisplayProxyFlags(flags, false, os.Stdout)
 		}
 
 		/* Describe the context. */
@@ -177,7 +179,7 @@ func connectOnce(pconn *net.Conn, pcc *proxy.CallCtx, host string, port int, ser
 		status = imr.Status
 		major = status.MajorStatus
 		if major != proxy.S_COMPLETE && major != proxy.S_CONTINUE_NEEDED {
-			DisplayProxyStatus("indicating mechanisms", imr.Status)
+			proxy.DisplayProxyStatus("indicating mechanisms", imr.Status)
 			return
 		}
 
@@ -213,7 +215,7 @@ func connectOnce(pconn *net.Conn, pcc *proxy.CallCtx, host string, port int, ser
 			status = wr.Status
 			major = status.MajorStatus
 			if major != proxy.S_COMPLETE {
-				DisplayProxyStatus("wrapping data", status)
+				proxy.DisplayProxyStatus("wrapping data", status)
 				return
 			}
 			if !noenc && !wr.ConfState && !quiet {
@@ -263,7 +265,7 @@ func connectOnce(pconn *net.Conn, pcc *proxy.CallCtx, host string, port int, ser
 			status = vr.Status
 			major = status.MajorStatus
 			if major != proxy.S_COMPLETE {
-				DisplayProxyStatus("verifying signature", status)
+				proxy.DisplayProxyStatus("verifying signature", status)
 				return
 			}
 			if !quiet {
@@ -364,7 +366,7 @@ func main() {
 		return
 	}
 	if gccr.Status.MajorStatus != proxy.S_COMPLETE {
-		DisplayProxyStatus("getting calling context", gccr.Status)
+		proxy.DisplayProxyStatus("getting calling context", gccr.Status)
 		return
 	}
 
