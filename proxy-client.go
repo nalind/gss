@@ -312,10 +312,6 @@ func main() {
 		tmpmech := misc.ParseOid(*mechstr)
 		nmech = &tmpmech
 		mech = tmpmech
-	} else {
-		tmpmech := misc.ParseOid("1.2.840.113554.1.2.2")
-		nmech = &tmpmech
-		mech = tmpmech
 	}
 	if *noauth {
 		*nowrap = true
