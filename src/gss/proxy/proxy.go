@@ -1250,6 +1250,19 @@ func mechIsKerberos(mech asn1.ObjectIdentifier) bool {
 	return false
 }
 
+/* Check if the creds structure includes a credential for use with SPNEGO.  We use this to hopefully hand off SPNEGO work to gss-proxy if it starts to offer it in the future. */
+func credsHaveSPNEGO(cred *Cred) bool {
+	if cred == nil {
+		return false
+	}
+	for _, element := range cred.Elements {
+		if MechSPNEGO.Equal(element.Mech) {
+			return true
+		}
+	}
+	return false
+}
+
 type InitSecContextResults struct {
 	Status      Status
 	SecCtx      *SecCtx
@@ -1266,7 +1279,7 @@ func InitSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, t
 	var gmr GetMicResults
 	var vmr VerifyMicResults
 
-	if len(mechType) == 0 || !mechType.Equal(MechSPNEGO) {
+	if len(mechType) == 0 || !mechType.Equal(MechSPNEGO) || credsHaveSPNEGO(cred) {
 		if len(mechType) == 0 {
 			mechType = MechKerberos5
 		}
@@ -1596,6 +1609,11 @@ func AcceptSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred,
 	var token []byte
 	var vmr VerifyMicResults
 	var gmr GetMicResults
+
+	/* Try to bow out if the proxy will let us have it do the SPNEGO work. */
+	if credsHaveSPNEGO(cred) {
+		return proxyAcceptSecContext(conn, callCtx, ctx, cred, inputToken, inputCB, retDelegCred, options)
+	}
 
 	/* Try to parse it as a generic initiator token. */
 	_, err = asn1.UnmarshalWithParams(inputToken, &inct, "application,tag:0")
