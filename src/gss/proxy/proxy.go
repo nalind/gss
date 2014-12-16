@@ -1375,7 +1375,7 @@ func InitSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, t
 	}
 
 	/* If we were told to send a MIC, compute it now. */
-	if callCtx.spnegoInit.sendMic && callCtx.spnegoInit.baseComplete {
+	if callCtx.spnegoInit.sendMic && !callCtx.spnegoInit.sentMic && callCtx.spnegoInit.baseComplete {
 		token, err = asn1.Marshal(inct.NegTokenInit.MechTypes)
 		if err != nil {
 			results.OutputToken = nil
@@ -1707,7 +1707,7 @@ func AcceptSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred,
 		callCtx.spnegoAccept.sendMic = !callCtx.spnegoAccept.sentMic
 	}
 	/* Compute the MIC to send to the initiator, if we need to send one. */
-	if callCtx.spnegoAccept.sendMic && callCtx.spnegoAccept.baseComplete {
+	if callCtx.spnegoAccept.sendMic && !callCtx.spnegoAccept.sentMic && callCtx.spnegoAccept.baseComplete {
 		gmr, err = GetMic(conn, callCtx, ctx, C_QOP_DEFAULT, callCtx.spnegoAccept.mechList)
 		if err != nil {
 			results.OutputToken = nil
