@@ -35,7 +35,7 @@ func connectOnce(pconn *net.Conn, pcc *proxy.CallCtx, host string, port int, ser
 				os.Exit(2)
 			}
 			if acr.Status.MajorStatus != proxy.S_COMPLETE {
-				DisplayProxyStatus("acquiring initiator creds", acr.Status)
+				proxy.DisplayProxyStatus("acquiring initiator creds", acr.Status)
 				return
 			}
 			cred = acr.OutputCredHandle
