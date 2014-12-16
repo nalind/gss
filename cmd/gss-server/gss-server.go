@@ -4,8 +4,8 @@ import "bytes"
 import "encoding/asn1"
 import "flag"
 import "fmt"
-import "gss"
-import "gss/misc"
+import "github.com/nalind/gss/pkg/gss"
+import "github.com/nalind/gss/pkg/gss/misc"
 import "net"
 import "io"
 import "os"
@@ -83,7 +83,7 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 			}
 			if major != gss.S_COMPLETE && major != gss.S_CONTINUE_NEEDED {
 				/* There was some kind of error. */
-				DisplayGSSError("accepting context", major, minor, &mech)
+				gss.DisplayGSSError("accepting context", major, minor, &mech)
 				return
 			}
 			if major == gss.S_COMPLETE {
@@ -103,10 +103,10 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 		/* Make sure the client name gets cleaned up eventually. */
 		defer gss.ReleaseName(cname)
 		/* Dig up information about the connection. */
-		DisplayGSSFlags(flags, false, logfile)
+		gss.DisplayGSSFlags(flags, false, logfile)
 		major, minor, oid := gss.OidToStr(mech)
 		if major != gss.S_COMPLETE {
-			DisplayGSSError("converting oid to string", major, minor, &mech)
+			gss.DisplayGSSError("converting oid to string", major, minor, &mech)
 		} else {
 			if verbose && logfile != nil {
 				fmt.Fprintf(logfile, "Accepted connection using mechanism OID %s.\n", oid)
@@ -115,7 +115,7 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 		/* Figure out the client's attributes and displayable and local names. */
 		major, minor, isMN, namemech, attrs := gss.InquireName(cname)
 		if major != gss.S_COMPLETE {
-			DisplayGSSError("inquiring name", major, minor, &mech)
+			gss.DisplayGSSError("inquiring name", major, minor, &mech)
 		} else {
 			if verbose && logfile != nil {
 				if isMN {
@@ -128,7 +128,7 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 					for more != 0 {
 						major, minor, authenticated, complete, value, displayValue := gss.GetNameAttribute(cname, attr, &more)
 						if major != gss.S_COMPLETE {
-							DisplayGSSError("getting name attribute", major, minor, &mech)
+							gss.DisplayGSSError("getting name attribute", major, minor, &mech)
 							break
 						} else {
 							fmt.Fprintf(logfile, "Attribute %s \"%s\"", attr, displayValue)
@@ -151,12 +151,12 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 		/* Exercise DuplicateName/ExportName. */
 		major, minor, tmpname := gss.DuplicateName(cname)
 		if major != gss.S_COMPLETE {
-			DisplayGSSError("duplicating name", major, minor, &mech)
+			gss.DisplayGSSError("duplicating name", major, minor, &mech)
 		} else {
 			defer gss.ReleaseName(tmpname)
 			major, minor, expname := gss.ExportName(tmpname)
 			if major != gss.S_COMPLETE {
-				DisplayGSSError("exporting name", major, minor, &mech)
+				gss.DisplayGSSError("exporting name", major, minor, &mech)
 			} else {
 				fmt.Printf("exported name:\n")
 				dump(logfile, expname)
@@ -165,19 +165,19 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 		/* Exercise DisplayName. */
 		major, minor, client, _ = gss.DisplayName(cname)
 		if major != gss.S_COMPLETE {
-			DisplayGSSError("displaying name", major, minor, &mech)
+			gss.DisplayGSSError("displaying name", major, minor, &mech)
 		}
 		/* Exercise Localname. */
 		major, minor, localname = gss.Localname(cname, nil)
 		if major != gss.S_COMPLETE {
-			DisplayGSSError("gss.Localname", major, minor, &mech)
+			gss.DisplayGSSError("gss.Localname", major, minor, &mech)
 		} else {
 			fmt.Printf("localname: %s\n", localname)
 		}
 		/* Exercise PNameToUid. */
 		major, minor, localuid := gss.PNameToUid(cname, nil)
 		if major != gss.S_COMPLETE {
-			DisplayGSSError("gss.PNameToUid", major, minor, &mech)
+			gss.DisplayGSSError("gss.PNameToUid", major, minor, &mech)
 		} else {
 			fmt.Printf("UID: \"%s\"\n", localuid)
 		}
@@ -191,11 +191,11 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 		for i := 0; i < 3; i++ {
 			major, minor, contextToken := gss.ExportSecContext(ctx)
 			if major != gss.S_COMPLETE {
-				DisplayGSSError("exporting a context", major, minor, &mech)
+				gss.DisplayGSSError("exporting a context", major, minor, &mech)
 			}
 			major, minor, ctx = gss.ImportSecContext(contextToken)
 			if major != gss.S_COMPLETE {
-				DisplayGSSError("importing a context", major, minor, &mech)
+				gss.DisplayGSSError("importing a context", major, minor, &mech)
 			}
 		}
 	}
@@ -245,7 +245,7 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 		if tag&misc.TOKEN_WRAPPED != 0 {
 			major, minor, conf, _, token = gss.Unwrap(ctx, token)
 			if major != gss.S_COMPLETE {
-				DisplayGSSError("unwrapping message", major, minor, &mech)
+				gss.DisplayGSSError("unwrapping message", major, minor, &mech)
 				break
 			}
 			/* If we were told it was encrypted, and it wasn't, warn. */
@@ -269,7 +269,7 @@ func serve(conn net.Conn, cred gss.CredHandle, export, verbose bool, logfile io.
 			/* Send back a signature over the payload data. */
 			major, minor, token := gss.GetMIC(ctx, gss.C_QOP_DEFAULT, token)
 			if major != gss.S_COMPLETE {
-				DisplayGSSError("signing message", major, minor, &mech)
+				gss.DisplayGSSError("signing message", major, minor, &mech)
 				break
 			}
 			misc.SendToken(conn, misc.TOKEN_MIC, token)
@@ -318,7 +318,7 @@ func main() {
 	/* Set up the server's name. */
 	major, minor, name := gss.ImportName(service, gss.C_NT_HOSTBASED_SERVICE)
 	if major != gss.S_COMPLETE {
-		DisplayGSSError("importing name", major, minor, nil)
+		gss.DisplayGSSError("importing name", major, minor, nil)
 		return
 	}
 	defer gss.ReleaseName(name)
@@ -327,14 +327,14 @@ func main() {
 	if len(*keytab) > 0 {
 		minor := gss.Krb5RegisterAcceptorIdentity(*keytab)
 		if minor != 0 {
-			DisplayGSSError("registering acceptor identity", 0, minor, nil)
+			gss.DisplayGSSError("registering acceptor identity", 0, minor, nil)
 		}
 	}
 
 	/* Make sure we have acceptor creds. */
 	major, minor, cred, _, _ := gss.AcquireCred(name, gss.C_INDEFINITE, nil, gss.C_ACCEPT)
 	if major != gss.S_COMPLETE {
-		DisplayGSSError("acquiring credentials", major, minor, nil)
+		gss.DisplayGSSError("acquiring credentials", major, minor, nil)
 		return
 	}
 
@@ -343,12 +343,12 @@ func main() {
 		for i := 0; i < 3; i++ {
 			major, minor, credToken := gss.ExportCred(cred)
 			if major != gss.S_COMPLETE {
-				DisplayGSSError("exporting a credential", major, minor, nil)
+				gss.DisplayGSSError("exporting a credential", major, minor, nil)
 				return
 			}
 			major, minor, cred = gss.ImportCred(credToken)
 			if major != gss.S_COMPLETE {
-				DisplayGSSError("importing a credential", major, minor, nil)
+				gss.DisplayGSSError("importing a credential", major, minor, nil)
 				return
 			}
 		}

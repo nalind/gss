@@ -1,26 +1,24 @@
-package main
+package proxy
 
 import "fmt"
-import "gss"
 import "io"
-import "encoding/asn1"
 
-/* DisplayError prints error messages associated with the passed-in major and minor error codes. */
-func DisplayGSSError(when string, major, minor uint32, mech *asn1.ObjectIdentifier) {
-	fmt.Print(gss.DisplayStatus(major, gss.C_GSS_CODE, nil))
-	fmt.Printf(" ")
+/* DisplayProxyStatus prints status error messages associated with the passed-in Status object. */
+func DisplayProxyStatus(when string, status Status) {
+	fmt.Printf("Error \"%s\" ", status.MajorStatusString)
 	if len(when) > 0 {
 		fmt.Printf("while %s", when)
 	}
-	fmt.Printf("\n")
-	if mech != nil {
-		fmt.Print(gss.DisplayStatus(major, gss.C_MECH_CODE, *mech))
-		fmt.Printf("\n")
+	if len(status.MinorStatusString) > 0 {
+		fmt.Printf(" (%s)", status.MinorStatusString)
+	} else {
+		fmt.Printf(" (minor code = 0x%x)", status.MinorStatus)
 	}
+	fmt.Printf(".\n")
 }
 
-/* DisplayGSSFlags logs the contents of the passed-in flags. */
-func DisplayGSSFlags(flags gss.Flags, complete bool, file io.Writer) {
+/* DisplayProxyFlags logs the contents of the passed-in flags. */
+func DisplayProxyFlags(flags Flags, complete bool, file io.Writer) {
 	if flags.Deleg {
 		fmt.Fprintf(file, "context flag: GSS_C_DELEG_FLAG\n")
 	}

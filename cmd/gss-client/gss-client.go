@@ -3,8 +3,8 @@ package main
 import "bytes"
 import "flag"
 import "fmt"
-import "gss"
-import "gss/misc"
+import "github.com/nalind/gss/pkg/gss"
+import "github.com/nalind/gss/pkg/gss/misc"
 import "net"
 import "os"
 import "strings"
@@ -36,7 +36,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 	}
 	major, minor, name := gss.ImportName(sname, gss.C_NT_HOSTBASED_SERVICE)
 	if major != gss.S_COMPLETE {
-		DisplayGSSError("importing remote service name", major, minor, nil)
+		gss.DisplayGSSError("importing remote service name", major, minor, nil)
 		return
 	}
 	defer gss.ReleaseName(name)
@@ -48,7 +48,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		/* Parse the user name. */
 		major, minor, username := gss.ImportName(*user, gss.C_NT_USER_NAME)
 		if major != gss.S_COMPLETE {
-			DisplayGSSError("importing client name", major, minor, nil)
+			gss.DisplayGSSError("importing client name", major, minor, nil)
 			return
 		}
 		defer gss.ReleaseName(username)
@@ -74,7 +74,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 			major, minor, cred, _, _ = gss.AcquireCred(username, gss.C_INDEFINITE, mechSet, gss.C_INITIATE)
 		}
 		if major != gss.S_COMPLETE {
-			DisplayGSSError("acquiring creds", major, minor, &mechSet[0])
+			gss.DisplayGSSError("acquiring creds", major, minor, &mechSet[0])
 			return
 		}
 		defer gss.ReleaseCred(cred)
@@ -87,7 +87,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 			mechSet[0] = *pmech
 			major, minor = gss.SetNegMechs(cred, mechSet)
 			if major != gss.S_COMPLETE {
-				DisplayGSSError("setting negotiate mechs", major, minor, nil)
+				gss.DisplayGSSError("setting negotiate mechs", major, minor, nil)
 				return
 			}
 		}
@@ -111,7 +111,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 			/* Start/continue. */
 			major, minor, _, token, flags, _, _, _ = gss.InitSecContext(cred, &ctx, name, mech, flags, gss.C_INDEFINITE, nil, token)
 			if major != gss.S_COMPLETE && major != gss.S_CONTINUE_NEEDED {
-				DisplayGSSError("initializing security context", major, minor, &mech)
+				gss.DisplayGSSError("initializing security context", major, minor, &mech)
 				gss.DeleteSecContext(ctx)
 				return
 			}
@@ -157,23 +157,23 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 			return
 		}
 		if !quiet {
-			DisplayGSSFlags(flags, false, os.Stdout)
+			gss.DisplayGSSFlags(flags, false, os.Stdout)
 		}
 
 		/* Describe the context. */
 		major, minor, sname, tname, lifetime, mech, flags2, _, _, local, open := gss.InquireContext(ctx)
 		if major != gss.S_COMPLETE {
-			DisplayGSSError("inquiring context", major, minor, &mech)
+			gss.DisplayGSSError("inquiring context", major, minor, &mech)
 			return
 		}
 		major, minor, srcname, srcnametype := gss.DisplayName(sname)
 		if major != gss.S_COMPLETE {
-			DisplayGSSError("displaying source name", major, minor, &mech)
+			gss.DisplayGSSError("displaying source name", major, minor, &mech)
 			return
 		}
 		major, minor, targname, _ := gss.DisplayName(tname)
 		if major != gss.S_COMPLETE {
-			DisplayGSSError("displaying target name", major, minor, &mech)
+			gss.DisplayGSSError("displaying target name", major, minor, &mech)
 			return
 		}
 		if local {
@@ -198,7 +198,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		}
 		major, minor, mechs := gss.InquireNamesForMech(mech)
 		if major != gss.S_COMPLETE {
-			DisplayGSSError("inquiring mech names", major, minor, &mech)
+			gss.DisplayGSSError("inquiring mech names", major, minor, &mech)
 			return
 		}
 		major, minor, oid = gss.OidToStr(mech)
@@ -211,7 +211,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		for i, nametype := range mechs {
 			major, minor, oid := gss.OidToStr(nametype)
 			if major != gss.S_COMPLETE {
-				DisplayGSSError("converting OID to string", major, minor, &mech)
+				gss.DisplayGSSError("converting OID to string", major, minor, &mech)
 			} else {
 				if !quiet {
 					fmt.Printf("%3d: %s\n", i, oid)
@@ -230,7 +230,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		} else {
 			major, minor, encrypted, wrapped = gss.Wrap(ctx, !noenc, gss.C_QOP_DEFAULT, plain)
 			if major != gss.S_COMPLETE {
-				DisplayGSSError("wrapping data", major, minor, &mech)
+				gss.DisplayGSSError("wrapping data", major, minor, &mech)
 				return
 			}
 			if !noenc && !encrypted && !quiet {
@@ -273,7 +273,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		} else {
 			major, minor, _ = gss.VerifyMIC(ctx, plain, mictoken)
 			if major != gss.S_COMPLETE {
-				DisplayGSSError("verifying signature", major, minor, &mech)
+				gss.DisplayGSSError("verifying signature", major, minor, &mech)
 				return
 			}
 			if !quiet {
