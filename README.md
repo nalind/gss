@@ -12,17 +12,21 @@ Package gss/proxy provides a client for [gss-proxy](https://fedorahosted.org/gss
 
 In order to use the proxy, your /etc/gssproxy/gssproxy.conf will need a stanza which the proxy will use to decide which credentials your process will be able to access, and over which socket it will be able to use them:
 
- [service/proxy-clients]
+```
+[service/proxy-clients]
   mechs = krb5
   euid = 0
   allow_any_uid = yes
   socket = /run/gssproxy-clients.sock
   cred_store = ccache:KEYRING:persistent:%U
+```
 
 Likewise, your server will need a stanza of its own:
 
- [service/http-server]
+```
+[service/http-server]
   mechs = krb5
   euid = 48
   socket = /run/gssproxy-http.sock
   cred_store = keytab:/etc/httpd/conf/httpd.keytab
+```
