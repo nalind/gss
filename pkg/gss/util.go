@@ -1,21 +1,31 @@
 package gss
 
-import "fmt"
-import "io"
-import "encoding/asn1"
+import (
+	"bytes"
+	"encoding/asn1"
+	"errors"
+	"fmt"
+	"io"
+)
 
 /* DisplayError prints error messages associated with the passed-in major and minor error codes. */
 func DisplayGSSError(when string, major, minor uint32, mech *asn1.ObjectIdentifier) {
-	fmt.Print(DisplayStatus(major, C_GSS_CODE, nil))
-	fmt.Printf(" ")
+	fmt.Println(NewGSSError(when, major, minor, mech))
+}
+
+func NewGSSError(when string, major, minor uint32, mech *asn1.ObjectIdentifier) error {
+	var b bytes.Buffer
+	fmt.Fprint(&b, DisplayStatus(major, C_GSS_CODE, nil))
 	if len(when) > 0 {
-		fmt.Printf("while %s", when)
+		fmt.Fprintf(&b, " while %s", when)
 	}
-	fmt.Printf("\n")
 	if mech != nil {
-		fmt.Print(DisplayStatus(major, C_MECH_CODE, *mech))
-		fmt.Printf("\n")
+		fmt.Fprintf(&b, "\n")
+		fmt.Fprint(&b, DisplayStatus(major, C_MECH_CODE, *mech))
+		fmt.Fprintf(&b, "\n")
 	}
+
+	return errors.New(b.String())
 }
 
 /* DisplayGSSFlags logs the contents of the passed-in flags. */
