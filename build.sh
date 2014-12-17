@@ -13,4 +13,6 @@ if pkg-config krb5-gssapi 2> /dev/null ; then
 	go build -o bin/gss-client cmd/gss-client/gss-client.go
 	echo gss-server
 	go build -o bin/gss-server cmd/gss-server/gss-server.go
+	echo www-authenticate
+	go build -o bin/www-authenticate cmd/www-authenticate/www-authenticate.go
 fi
