@@ -964,7 +964,7 @@ func Unwrap(contextHandle ContextHandle, inputMessage []byte) (majorStatus, mino
 }
 
 /* DisplayStatus() returns a printable representation of a major (C_GSS_CODE) or mechanism-specific minor (C_MECH_CODE) status code. */
-func DisplayStatus(statusValue uint32, statusType int, mechType asn1.ObjectIdentifier) (majorStatus, minorStatus, messageContext uint32, statusString string) {
+func DisplayStatus(statusValue uint32, statusType int, mechType asn1.ObjectIdentifier) []interface{} {
 	value := C.OM_uint32(statusValue)
 	stype := C.int(statusType)
 	mech := oidToCOid(mechType)
@@ -974,14 +974,15 @@ func DisplayStatus(statusValue uint32, statusType int, mechType asn1.ObjectIdent
 	major = C.gss_display_status(&minor, value, stype, mech, &mctx, &status)
 	C.free_oid(mech)
 
-	majorStatus = uint32(major)
-	minorStatus = uint32(minor)
-	messageContext = uint32(mctx)
+	majorStatus := uint32(major)
+	minorStatus := uint32(minor)
+	messageContext := uint32(mctx)
+	statusString := ""
 	if status.length > 0 {
 		statusString = bufferToString(status)
 		major = C.gss_release_buffer(&minor, &status)
 	}
-	return
+	return []interface{}{majorStatus, minorStatus, messageContext, statusString}
 }
 
 /* IndicateMechs() returns a list of the available security mechanism types. */
