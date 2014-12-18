@@ -8,11 +8,13 @@ import (
 	"net/http"
 
 	gsshttp "github.com/nalind/gss/pkg/gss/http"
+	gssproxy "github.com/nalind/gss/pkg/gss/proxy/http"
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Println("Usage: www-authenticate URL")
+	var client *http.Client
+	if len(os.Args) < 2 {
+		fmt.Println("Usage: www-authenticate URL [gss-proxy-socket]")
 		return
 	}
 
@@ -22,7 +24,11 @@ func main() {
 		return
 	}
 
-	client := &http.Client{Transport: gsshttp.NewNegotiateRoundTripper(http.DefaultTransport)}
+	if len(os.Args) > 2 {
+		client = &http.Client{Transport: gssproxy.NewNegotiateRoundTripper(os.Args[2], http.DefaultTransport)}
+	} else {
+		client = &http.Client{Transport: gsshttp.NewNegotiateRoundTripper(http.DefaultTransport)}
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
