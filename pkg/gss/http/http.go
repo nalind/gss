@@ -4,6 +4,7 @@ import (
 	"encoding/asn1"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -69,7 +70,7 @@ func (rt *negotiateRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 			spnego := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 2}
 			major, minor, _, outgoingToken, flags, _, _, _ = gss.InitSecContext(nil, &ctx, name, spnego, flags, gss.C_INDEFINITE, nil, incomingToken)
 			if major != gss.S_COMPLETE && major != gss.S_CONTINUE_NEEDED {
-				return nil, gss.NewGSSError("initializing security context", major, minor, nil)
+				return nil, gss.NewGSSError(fmt.Sprintf("initializing security context (step %d)", i+1), major, minor, &spnego)
 			}
 
 			// fmt.Printf("Complete: %v, Continue: %v\n", major == gss.S_COMPLETE, major == gss.S_CONTINUE_NEEDED)
