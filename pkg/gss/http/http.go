@@ -1,6 +1,7 @@
 package http
 
 import (
+	"encoding/asn1"
 	"encoding/base64"
 	"errors"
 	"net/http"
@@ -65,7 +66,8 @@ func (rt *negotiateRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 
 			// call gss_init_sec_context to validate the incoming token (if given), and get our outgoing token (if needed)
 			var outgoingToken []byte
-			major, minor, _, outgoingToken, flags, _, _, _ = gss.InitSecContext(nil, &ctx, name, nil, flags, gss.C_INDEFINITE, nil, incomingToken)
+			spnego := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 2}
+			major, minor, _, outgoingToken, flags, _, _, _ = gss.InitSecContext(nil, &ctx, name, spnego, flags, gss.C_INDEFINITE, nil, incomingToken)
 			if major != gss.S_COMPLETE && major != gss.S_CONTINUE_NEEDED {
 				return nil, gss.NewGSSError("initializing security context", major, minor, nil)
 			}
