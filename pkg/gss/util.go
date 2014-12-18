@@ -15,14 +15,14 @@ func DisplayGSSError(when string, major, minor uint32, mech *asn1.ObjectIdentifi
 
 func NewGSSError(when string, major, minor uint32, mech *asn1.ObjectIdentifier) error {
 	var b bytes.Buffer
-	fmt.Fprint(&b, DisplayStatus(major, C_GSS_CODE, nil))
+	fmt.Fprint(&b, DisplayStatus(major, C_GSS_CODE, nil)[3])
 	if len(when) > 0 {
 		fmt.Fprintf(&b, " while %s", when)
 	}
 	if mech != nil {
-		fmt.Fprintf(&b, "\n")
-		fmt.Fprint(&b, DisplayStatus(major, C_MECH_CODE, *mech))
-		fmt.Fprintf(&b, "\n")
+		fmt.Fprintf(&b, " (")
+		fmt.Fprint(&b, DisplayStatus(minor, C_MECH_CODE, *mech)[3])
+		fmt.Fprintf(&b, ")")
 	}
 
 	return errors.New(b.String())
