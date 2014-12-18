@@ -1279,7 +1279,7 @@ func InitSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, t
 	var gmr GetMicResults
 	var vmr VerifyMicResults
 
-	if len(mechType) == 0 || !mechType.Equal(MechSPNEGO) || credsHaveSPNEGO(cred) {
+	if !mechType.Equal(MechSPNEGO) || credsHaveSPNEGO(cred) {
 		if len(mechType) == 0 {
 			mechType = MechKerberos5
 		}
@@ -1313,6 +1313,12 @@ func InitSecContext(conn *net.Conn, callCtx *CallCtx, ctx *SecCtx, cred *Cred, t
 		/* If there's a mech indicated, check that it's one that we wanted. */
 		if len(resp.SupportedMech) > 0 {
 			callCtx.spnegoInit.mech = resp.SupportedMech
+		}
+		if len(callCtx.spnegoInit.mech) == 0 {
+			/* No mech selected. */
+			results.Status.MajorStatus = S_DEFECTIVE_TOKEN
+			results.Status.MajorStatusString = "no SPNEGO mechanism selected by peer"
+			return
 		}
 		if !mechIsKerberos(callCtx.spnegoInit.mech) {
 			/* Not a Kerberos mech. */
