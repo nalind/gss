@@ -57,7 +57,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 		if pmech != nil || spnego {
 			mechSet = make([]asn1.ObjectIdentifier, 1)
 			if spnego {
-				mechSet[0] = misc.ParseOid("1.3.6.1.5.5.2")
+				mechSet[0] = gss.Mech_spnego
 			} else {
 				mechSet[0] = *pmech
 			}
@@ -91,7 +91,7 @@ func connectOnce(host string, port int, service string, mcount int, quiet bool, 
 				return
 			}
 		}
-		mech = misc.ParseOid("1.3.6.1.5.5.2")
+		mech = gss.Mech_spnego
 	} else {
 		if pmech != nil {
 			mech = *pmech

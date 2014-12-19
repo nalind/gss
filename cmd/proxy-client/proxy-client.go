@@ -2,16 +2,17 @@ package main
 
 import (
 	"bytes"
+	"encoding/asn1"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"net"
+	"os"
+	"strings"
+
+	"github.com/nalind/gss/pkg/gss/misc"
+	"github.com/nalind/gss/pkg/gss/proxy"
 )
-import "flag"
-import "encoding/asn1"
-import "encoding/json"
-import "fmt"
-import "github.com/nalind/gss/pkg/gss/proxy"
-import "github.com/nalind/gss/pkg/gss/misc"
-import "net"
-import "os"
-import "strings"
 
 func connectOnce(pconn *net.Conn, pcc *proxy.CallCtx, host string, port int, service string, mcount int, quiet bool, plain []byte, v1, spnego bool, nmech *asn1.ObjectIdentifier, mech asn1.ObjectIdentifier, delegate, seq, noreplay, nomutual, noauth, nowrap, noenc, nomic bool) {
 	var ctx proxy.SecCtx
@@ -57,7 +58,7 @@ func connectOnce(pconn *net.Conn, pcc *proxy.CallCtx, host string, port int, ser
 			mechs[0] = mech
 			proxy.SetNegMechs(pconn, pcc, cred, &mechs)
 		}
-		mech = misc.ParseOid("1.3.6.1.5.5.2")
+		mech = proxy.MechSPNEGO
 	}
 
 	/* Open the connection. */

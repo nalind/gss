@@ -202,6 +202,7 @@ var (
 	Mech_krb5_old      = coidToOid(*C.gss_mech_krb5_old)
 	Mech_krb5_wrong    = coidToOid(*C.gss_mech_krb5_wrong)
 	Mech_iakerb        = coidToOid(*C.gss_mech_iakerb)
+	Mech_spnego        = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 2}
 	Mech_set_krb5      = coidSetToOids(C.gss_mech_set_krb5)
 	Mech_set_krb5_old  = coidSetToOids(C.gss_mech_set_krb5_old)
 	Mech_set_krb5_both = coidSetToOids(C.gss_mech_set_krb5_both)
