@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/nalind/gss/pkg/gss"
 	gsshttp "github.com/nalind/gss/pkg/gss/http"
 	gssproxy "github.com/nalind/gss/pkg/gss/proxy/http"
 )
@@ -27,7 +28,12 @@ func main() {
 	if len(os.Args) > 2 {
 		client = &http.Client{Transport: gssproxy.NewNegotiateRoundTripper(os.Args[2], http.DefaultTransport)}
 	} else {
-		client = &http.Client{Transport: gsshttp.NewNegotiateRoundTripper(http.DefaultTransport)}
+		client = &http.Client{
+			Transport: &gsshttp.NegotiateRoundTripper{
+				Transport: http.DefaultTransport,
+				Flags:     gss.Flags{Mutual: true},
+			},
+		}
 	}
 
 	resp, err := client.Do(req)

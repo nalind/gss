@@ -11,18 +11,20 @@ import (
 	"github.com/nalind/gss/pkg/gss"
 )
 
-type negotiateRoundTripper struct {
-	rt http.RoundTripper
+type NegotiateRoundTripper struct {
+	Transport http.RoundTripper
+	Flags     gss.Flags
+	Mech      asn1.ObjectIdentifier
 }
 
 func NewNegotiateRoundTripper(rt http.RoundTripper) http.RoundTripper {
-	return &negotiateRoundTripper{rt}
+	return &NegotiateRoundTripper{Transport: rt}
 }
 
-func (rt *negotiateRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+func (rt *NegotiateRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	req = cloneRequest(req)
 
-	resp, err := rt.rt.RoundTrip(req)
+	resp, err := rt.Transport.RoundTrip(req)
 	if err != nil {
 		return resp, err
 	}
@@ -43,9 +45,9 @@ func (rt *negotiateRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 		defer gss.DeleteSecContext(ctx)
 
 		var major, minor uint32
-		var flags gss.Flags = gss.Flags{
-			Mutual: true,
-		}
+
+		// Local copy of flags
+		flags := rt.Flags
 
 		// TODO: guard against infinite loops, set some max
 
@@ -67,10 +69,9 @@ func (rt *negotiateRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 
 			// call gss_init_sec_context to validate the incoming token (if given), and get our outgoing token (if needed)
 			var outgoingToken []byte
-			spnego := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 2}
-			major, minor, _, outgoingToken, flags, _, _, _ = gss.InitSecContext(nil, &ctx, name, spnego, flags, gss.C_INDEFINITE, nil, incomingToken)
+			major, minor, _, outgoingToken, flags, _, _, _ = gss.InitSecContext(nil, &ctx, name, rt.Mech, flags, gss.C_INDEFINITE, nil, incomingToken)
 			if major != gss.S_COMPLETE && major != gss.S_CONTINUE_NEEDED {
-				return nil, gss.NewGSSError(fmt.Sprintf("initializing security context (step %d)", i+1), major, minor, &spnego)
+				return nil, gss.NewGSSError(fmt.Sprintf("initializing security context (step %d)", i+1), major, minor, &rt.Mech)
 			}
 
 			// fmt.Printf("Complete: %v, Continue: %v\n", major == gss.S_COMPLETE, major == gss.S_CONTINUE_NEEDED)
@@ -81,7 +82,7 @@ func (rt *negotiateRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 				outgoingTokenBase64 := base64.StdEncoding.EncodeToString(outgoingToken)
 				// fmt.Println("Re-sending request with Authorization token")
 				req.Header.Set("Authorization", "Negotiate "+outgoingTokenBase64)
-				resp, err = rt.rt.RoundTrip(req)
+				resp, err = rt.Transport.RoundTrip(req)
 				if err != nil {
 					return nil, err
 				}
