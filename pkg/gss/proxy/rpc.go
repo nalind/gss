@@ -160,7 +160,7 @@ func CallRpc(conn *net.Conn, prog, vers, proc, authFlavor uint32, body []byte, r
 	}
 
 	/* Calculate the lone fragment's length. */
-	if nh+nb < 0 || nh+nb >= 0x80000000 {
+	if int64(nh)+int64(nb) < 0 || int64(nh)+int64(nb) >= 0x80000000 {
 		err = errors.New("RPC call message would have an invalid length")
 		return
 	}
