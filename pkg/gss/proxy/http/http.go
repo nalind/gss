@@ -96,9 +96,9 @@ func (rt *negotiateRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 			iscr, err = proxy.InitSecContext(&proxyConn, &proxyCall, &ctx, &cred, &name, proxy.MechSPNEGO, proxy.Flags{Mutual: true}, proxy.C_INDEFINITE, nil, incomingTokenPtr, nil)
 			if iscr.Status.MajorStatus != proxy.S_COMPLETE && iscr.Status.MajorStatus != proxy.S_CONTINUE_NEEDED {
 				if iscr.Status.MinorStatusString != "" {
-					return nil, errors.New(fmt.Sprintf("%s while initializing security context (%s) (step %d)", iscr.Status.MajorStatusString, iscr.Status.MinorStatusString, i + 1))
+					return nil, errors.New(fmt.Sprintf("%s while initializing security context (%s) (step %d)", iscr.Status.MajorStatusString, iscr.Status.MinorStatusString, i+1))
 				} else {
-					return nil, errors.New(fmt.Sprintf("%s while initializing security context (step %d)", iscr.Status.MajorStatusString, i + 1))
+					return nil, errors.New(fmt.Sprintf("%s while initializing security context (step %d)", iscr.Status.MajorStatusString, i+1))
 				}
 			}
 
