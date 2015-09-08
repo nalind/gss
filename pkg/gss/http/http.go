@@ -35,7 +35,7 @@ func (rt *NegotiateRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 	if isInitialChallenge(resp) {
 		// fmt.Println("RoundTrip: Started negotiate loop")
 
-		name, err := importName(req.Host)
+		name, err := ImportName(req.Host)
 		if err != nil {
 			return nil, err
 		}
@@ -140,9 +140,9 @@ func gssapiData(resp *http.Response) ([]byte, error) {
 	return decodedData, nil
 }
 
-// importName returns a gss.InternalName for a given hostname, or an error.
+// ImportName returns a gss.InternalName for a given hostname, or an error.
 // The caller is responsible for releasing the returned name using gss.ReleaseName.
-func importName(hostname string) (gss.InternalName, error) {
+func ImportName(hostname string) (gss.InternalName, error) {
 	major, minor, name := gss.ImportName("HTTP@"+hostname, gss.C_NT_HOSTBASED_SERVICE)
 	if major != gss.S_COMPLETE {
 		return nil, gss.NewGSSError("importing remote service name", major, minor, nil)
